@@ -3,12 +3,14 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { api } from '../lib/api';
 import BookmarkButton from '../components/BookmarkButton';
+import HandoffMenu from '../components/HandoffMenu';
 import RadialScore from '../components/RadialScore';
-import { BookmarkX } from 'lucide-react';
+import { BookmarkX, Send } from 'lucide-react';
 import { useShortlist } from '../lib/shortlist';
 
 export default function Shortlist() {
   const [items, setItems] = useState(null);
+  const [handoffFor, setHandoffFor] = useState(null);
   const { isSaved, count } = useShortlist();
 
   const load = async () => {
@@ -46,13 +48,19 @@ export default function Shortlist() {
             return (
               <motion.div key={it.opportunity_id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
                 <div className="card-surface p-6 card-hover relative" data-testid={`saved-${it.opportunity_id}`}>
-                  <div className="absolute top-4 right-4">
+                  <div className="absolute top-4 right-4 flex items-center gap-1">
+                    <button
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setHandoffFor(it.opportunity_id); }}
+                      data-testid={`saved-send-${it.opportunity_id}`}
+                      className="p-2 rounded-full text-zinc-500 hover:text-violet-300 hover:bg-white/5 transition-colors"
+                      title="Send to editor"
+                    ><Send size={16} /></button>
                     <BookmarkButton oppId={it.opportunity_id} />
                   </div>
                   <Link to={`/app/opportunity/${it.opportunity_id}`} className="block">
                     <div className="flex items-start gap-5">
                       <RadialScore value={o.score} size={80} sublabel="score" />
-                      <div className="flex-1 pr-8">
+                      <div className="flex-1 pr-16">
                         <div className="chip mb-2">{o.trend.name} · {o.trend.stage}</div>
                         <h3 className="font-display text-lg font-semibold leading-snug">{o.title}</h3>
                         <div className="text-xs text-zinc-500 mt-3">Saved {new Date(it.saved_at).toLocaleDateString()}</div>
@@ -65,6 +73,7 @@ export default function Shortlist() {
           })}
         </div>
       )}
+      {handoffFor && <HandoffMenu oppId={handoffFor} open={!!handoffFor} onOpenChange={(v) => !v && setHandoffFor(null)} />}
     </div>
   );
 }

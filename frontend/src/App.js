@@ -15,6 +15,8 @@ import IdeaLab from './pages/IdeaLab';
 import CreatorProfile from './pages/CreatorProfile';
 import Shortlist from './pages/Shortlist';
 import Studio from './pages/Studio';
+import ScriptsList from './pages/ScriptsList';
+import ScriptEditor from './pages/ScriptEditor';
 import Layout from './components/Layout';
 
 function AppShell({ children }) { return <Layout>{children}</Layout>; }
@@ -39,6 +41,8 @@ export default function App() {
         <Route path="/app/collab" element={<AppShell><CreatorProfile /></AppShell>} />
         <Route path="/app/shortlist" element={<AppShell><Shortlist /></AppShell>} />
         <Route path="/app/studio" element={<AppShell><Studio /></AppShell>} />
+        <Route path="/app/scripts" element={<AppShell><ScriptsList /></AppShell>} />
+        <Route path="/app/scripts/:id" element={<AppShell><ScriptEditor /></AppShell>} />
 
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>

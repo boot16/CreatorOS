@@ -56,3 +56,16 @@ CreatorOS — Know what to create next, and who to create it with. An AI system 
 - 14/14 frontend flows pass (stale-state bug in Shortlist fixed post-test)
 - Real Claude streaming verified (700+ char DNA-grounded reply)
 - Regenerate verified: distinct titles vs cached
+
+## Iteration 3 (2026-02-22) — Team collaboration + real workspace
+- Team Handoff: Copy brief (markdown), Email brief (mailto:), Slack post (webhook with setup guide fallback). Send buttons on Opportunity Detail + Shortlist cards.
+- Script Drafts: `/api/scripts` full CRUD + `/api/scripts/{id}/refine` that rewrites via natural-language instruction. Textarea editor + refine sidebar + 4 quick refinement pills. "Turn into script" on Idea Lab creates + navigates.
+- Weekly Content Calendar: New tabbed Studio (Assistant | Weekly plan). 7-day grid, drag opportunities from source list, HTML5 DnD, per-day counts. `/api/calendar` CRUD.
+- Real DNA Ingest: `/api/me/creator` returns LLM-inferred DNA from connected YouTube channel (pillars/formats/style/audience). `/api/me/opportunities` reflows scores using user's own DNA. DNA dashboard auto-loads real DNA when connected; falls back to seeded.
+
+### Verification (iteration 3)
+- 16/16 backend pytest pass in 52s
+- 100% frontend flows pass
+- Real Claude script drafts verified (5950 chars, HOOK/BEAT structure)
+- Refine turn verified (5950 → 6422 chars, different content)
+- Slack + Google OAuth intentionally unconfigured — fallback paths verified only

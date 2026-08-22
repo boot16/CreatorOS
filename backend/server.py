@@ -20,6 +20,7 @@ from seed_data import (
 )
 from auth_google import build_router as build_auth_router, current_user, SESSION_COOKIE
 from dna_card import render_dna_card
+from features import build_router as build_features_router
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -444,6 +445,17 @@ async def assistant_history(session_id: str):
 # Mount routers
 app.include_router(api_router)
 app.include_router(build_auth_router(db), prefix="/api")
+app.include_router(build_features_router(db, {
+    "get_opportunity": get_opportunity,
+    "get_creator_data": get_creator_data,
+    "call_llm": call_llm,
+    "extract_json": extract_json,
+    "WEIGHTS_OPP": WEIGHTS_OPP,
+    "OPPORTUNITIES": OPPORTUNITIES,
+    "TRENDS": TRENDS,
+    "compute_opportunity_score": compute_opportunity_score,
+    "ALEX": ALEX,
+}), prefix="/api")
 
 
 @app.on_event("shutdown")

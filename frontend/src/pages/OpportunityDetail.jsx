@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../lib/api';
 import RadialScore from '../components/RadialScore';
 import Sparkline from '../components/Sparkline';
-import { ChevronDown, Sparkles, TrendingUp } from 'lucide-react';
+import HandoffMenu from '../components/HandoffMenu';
+import { ChevronDown, Sparkles, TrendingUp, Send } from 'lucide-react';
 
 const WEIGHTS = {
   TrendFit: 0.25, CreatorFit: 0.25, HistoricalFormatFit: 0.20,
@@ -19,6 +20,7 @@ export default function OpportunityDetail() {
   const { id } = useParams();
   const [o, setO] = useState(null);
   const [open, setOpen] = useState(true);
+  const [handoff, setHandoff] = useState(false);
 
   useEffect(() => {
     setO(null);
@@ -123,12 +125,17 @@ export default function OpportunityDetail() {
             <Link to={`/app/idea/${o.id}`} data-testid="open-idea-lab" className="btn-primary w-full inline-flex items-center justify-center gap-2">
               <Sparkles size={16} /> Open Idea Lab
             </Link>
+            <button onClick={() => setHandoff(true)} data-testid="send-editor-btn" className="btn-ghost w-full mt-3 inline-flex items-center justify-center gap-2">
+              <Send size={14} /> Send to editor
+            </button>
             <Link to={`/app/trends/${o.trend_id}`} className="btn-ghost w-full text-center mt-3 inline-block">
               See trend detail
             </Link>
           </div>
         </div>
       </div>
+
+      <HandoffMenu oppId={o.id} open={handoff} onOpenChange={setHandoff} />
     </motion.div>
   );
 }

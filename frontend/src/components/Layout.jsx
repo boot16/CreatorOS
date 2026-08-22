@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
-import { Sparkles, Radar, Lightbulb, Users, Bookmark, MessageSquare } from 'lucide-react';
+import { Sparkles, Radar, Lightbulb, Users, Bookmark, MessageSquare, FileText } from 'lucide-react';
 import { useShortlist } from '../lib/shortlist';
 
 const links = [
@@ -8,6 +8,7 @@ const links = [
   { to: '/app/trends', label: 'Trends', icon: Radar },
   { to: '/app/dna', label: 'DNA', icon: Lightbulb },
   { to: '/app/studio', label: 'Studio', icon: MessageSquare },
+  { to: '/app/scripts', label: 'Scripts', icon: FileText },
   { to: '/app/shortlist', label: 'Saved', icon: Bookmark, badge: true },
   { to: '/app/collab', label: 'Collab', icon: Users },
 ];

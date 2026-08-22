@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { api } from '../lib/api';
-import { Sparkles, Copy, Loader2, RotateCw } from 'lucide-react';
+import { Sparkles, Copy, Loader2, RotateCw, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function IdeaLab() {
   const { oppId } = useParams();
+  const nav = useNavigate();
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
   const [regenerating, setRegenerating] = useState(false);
+  const [creatingScript, setCreatingScript] = useState(false);
 
   const load = async (regenerate = false) => {
     if (regenerate) setRegenerating(true); else setData(null);
@@ -22,6 +24,16 @@ export default function IdeaLab() {
       setErr(e?.response?.data?.detail || 'Generation failed');
     }
     setRegenerating(false);
+  };
+
+  const turnIntoScript = async () => {
+    setCreatingScript(true);
+    try {
+      const r = await api.post('/scripts', { opportunity_id: oppId });
+      toast.success('Script draft created');
+      nav(`/app/scripts/${r.data.id}`);
+    } catch (e) { toast.error(e?.response?.data?.detail || 'Could not create script'); }
+    setCreatingScript(false);
   };
 
   useEffect(() => { load(false); /* eslint-disable-next-line */ }, [oppId]);
@@ -46,6 +58,15 @@ export default function IdeaLab() {
         >
           {regenerating ? <Loader2 size={14} className="animate-spin" /> : <RotateCw size={14} />}
           {regenerating ? 'Regenerating…' : 'Regenerate'}
+        </button>
+        <button
+          onClick={turnIntoScript}
+          disabled={creatingScript || !data}
+          data-testid="turn-into-script-btn"
+          className="btn-primary inline-flex items-center gap-2 disabled:opacity-50"
+        >
+          {creatingScript ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+          {creatingScript ? 'Drafting…' : 'Turn into script'}
         </button>
       </div>
 

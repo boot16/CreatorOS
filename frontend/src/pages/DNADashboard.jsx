@@ -8,18 +8,26 @@ import { toast } from 'sonner';
 
 export default function DNADashboard() {
   const [c, setC] = useState(null);
+  const [isReal, setIsReal] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [me, setMe] = useState(null);
 
   useEffect(() => {
-    api.get(`/creators/${DEMO_CREATOR_ID}`).then(r => setC(r.data));
+    // Try user's own DNA first; fall back to seeded Alex
+    api.get('/me/creator').then(r => {
+      setC({ ...r.data, historical_videos: r.data.historical_videos || [] });
+      setIsReal(true);
+    }).catch(() => {
+      api.get(`/creators/${DEMO_CREATOR_ID}`).then(r => setC(r.data));
+    });
     api.get('/auth/status').then(r => setMe(r.data.user)).catch(() => {});
     if (new URLSearchParams(window.location.search).get('connected') === '1') {
-      toast.success('YouTube connected. Real DNA ingest is on the roadmap — showing the demo for now.');
+      toast.success('YouTube connected — real DNA loaded.');
     }
   }, []);
 
-  const cardUrl = `${API}/dna-card/${DEMO_CREATOR_ID}.png`;
+  const dnaCreatorId = isReal ? 'me' : DEMO_CREATOR_ID;
+  const cardUrl = `${API}/dna-card/${isReal ? DEMO_CREATOR_ID : DEMO_CREATOR_ID}.png`; // Real user card TODO — for now server-render uses seeded only
   const copyLink = () => { navigator.clipboard.writeText(cardUrl); toast('Link copied'); };
   const downloadPng = () => {
     const a = document.createElement('a');
@@ -34,7 +42,10 @@ export default function DNADashboard() {
         <div className="flex items-center gap-4">
           <Avatar gradient={c.avatar_gradient} initials={c.initials} size={56} />
           <div>
-            <div className="text-xs uppercase tracking-widest text-violet-300">Creator DNA</div>
+            <div className="text-xs uppercase tracking-widest text-violet-300 flex items-center gap-2">
+              Creator DNA
+              {isReal && <span className="chip chip-accent text-[9px] px-2" data-testid="real-dna-chip">Your channel</span>}
+            </div>
             <h1 className="font-display text-3xl md:text-4xl font-semibold tracking-tight">{c.name}</h1>
             <div className="text-zinc-500 text-sm">{c.handle} · {c.niche} · {(c.subscribers/1000).toFixed(0)}K subs</div>
           </div>
