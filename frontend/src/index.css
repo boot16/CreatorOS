@@ -1,0 +1,160 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap');
+
+:root {
+  --bg: #0A0A0F;
+  --surface: #12121A;
+  --surface-2: #1A1A24;
+  --border: rgba(255,255,255,0.08);
+  --border-strong: rgba(255,255,255,0.14);
+  --accent: #8A2BE2;
+  --accent-hover: #9D4EDD;
+  --accent-soft: rgba(138,43,226,0.14);
+  --text: #F8F9FA;
+  --text-muted: #A1A1AA;
+  --success: #10B981;
+  --warning: #F59E0B;
+  --danger: #EF4444;
+}
+
+@layer base {
+  :root {
+    --background: 240 15% 5%;
+    --foreground: 210 20% 98%;
+    --card: 240 14% 8%;
+    --card-foreground: 210 20% 98%;
+    --popover: 240 14% 8%;
+    --popover-foreground: 210 20% 98%;
+    --primary: 271 76% 53%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 6% 15%;
+    --secondary-foreground: 210 20% 98%;
+    --muted: 240 6% 15%;
+    --muted-foreground: 240 5% 65%;
+    --accent: 271 76% 53%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 20% 98%;
+    --border: 240 6% 20%;
+    --input: 240 6% 15%;
+    --ring: 271 76% 53%;
+    --radius: 0.75rem;
+  }
+}
+
+html, body, #root {
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+body {
+  margin: 0;
+  font-family: 'Manrope', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% -10%, rgba(138,43,226,0.14), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 90% 100%, rgba(138,43,226,0.06), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+}
+
+h1, h2, h3, h4, .font-display {
+  font-family: 'Outfit', sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.font-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(138,43,226,0.35); }
+
+/* Selection */
+::selection { background: rgba(138,43,226,0.4); color: #fff; }
+
+/* Grain overlay utility */
+.grain::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.05 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  opacity: 0.5;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+}
+
+.card-surface {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+}
+
+.card-hover {
+  transition: border-color 200ms, transform 200ms, background 200ms;
+}
+.card-hover:hover {
+  border-color: rgba(138,43,226,0.55);
+  transform: translateY(-2px);
+  background: var(--surface-2);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.28rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.chip-accent {
+  color: #E9D5FF;
+  border-color: rgba(138,43,226,0.4);
+  background: var(--accent-soft);
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 999px;
+  padding: 0.7rem 1.4rem;
+  font-weight: 600;
+  transition: filter 160ms, transform 160ms;
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 8px 24px -12px rgba(138,43,226,0.6);
+}
+.btn-primary:hover { filter: brightness(1.15); transform: translateY(-1px); }
+
+.btn-ghost {
+  color: var(--text);
+  border-radius: 999px;
+  padding: 0.7rem 1.4rem;
+  font-weight: 500;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  transition: background 160ms, border-color 160ms;
+}
+.btn-ghost:hover { background: rgba(255,255,255,0.06); border-color: var(--border-strong); }
+
+.gradient-text {
+  background: linear-gradient(180deg, #F8F9FA 0%, #C4B5FD 60%, #8A2BE2 120%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+}

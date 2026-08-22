@@ -1,0 +1,125 @@
+{
+  "theme": "dark",
+  "typography": {
+    "headings": {
+      "family": "Outfit, sans-serif",
+      "weights": ["400", "500", "700"],
+      "usage": "Use tight letter spacing (tracking-tight) for large headings. Never use Inter for headings."
+    },
+    "body": {
+      "family": "Manrope, sans-serif",
+      "weights": ["400", "500", "600"],
+      "usage": "Use for all body text, labels, and table data. Ensures readability."
+    },
+    "instructions": "Import Outfit and Manrope from Google Fonts in index.css or index.html."
+  },
+  "colors": {
+    "background": "#0A0A0F",
+    "surface": "#12121A",
+    "surface_elevated": "#1A1A24",
+    "border": "rgba(255, 255, 255, 0.08)",
+    "accent_primary": "#8A2BE2",
+    "accent_hover": "#9D4EDD",
+    "text_primary": "#F8F9FA",
+    "text_secondary": "#A1A1AA",
+    "success": "#10B981",
+    "warning": "#F59E0B"
+  },
+  "visual_enhancers": {
+    "cards": "rounded-2xl, subtle border (border-white/10), solid surface background (no heavy drop shadows). Generous padding (p-6 to p-8).",
+    "glassmorphism": "Use for modals, dropdowns, and sticky headers: backdrop-blur-xl, bg-black/60, and border-white/10 inner stroke.",
+    "charts": "Radial/circular progress indicators for 0-100 scores. Sparkline-style trend lines for momentum. Use Recharts with electric violet stroke colors and subtle gradient fills.",
+    "hover_effects": "Cards should have a slight lift (-translate-y-1) and subtle border highlight on hover. Buttons should use a slight brightness increase."
+  },
+  "layouts": {
+    "general": "Mobile-first responsive grids. Use generous spacing (p-6, p-8, p-12).",
+    "dashboard": "High Density Grid strategy: grid-cols-1 md:grid-cols-3 lg:grid-cols-4 with gap-6. Every pixel utilized, h-full on children.",
+    "bento_grid": "For the Idea Lab and Creator DNA: asymmetrical span logic (e.g., col-span-2 row-span-2 for primary visual, col-span-1 for stats)."
+  },
+  "components": {
+    "buttons": "Pill-shaped or rounded-lg. Primary button uses solid Electric Violet background with white text. Secondary button uses transparent background with border-white/10 and white text.",
+    "navigation": "Sticky top nav or left sidebar. Must include branding, 3-5 links, and a primary CTA. Use glassmorphism if top nav.",
+    "badges_labels": "Uppercase, tiny text (text-xs), wide spacing (tracking-[0.2em]), soft background (bg-white/5) or soft violet (bg-violet-500/10 text-violet-400).",
+    "modals": "Use Shadcn Dialog. For 'Propose Collaboration' modal, ensure a premium glassmorphism overlay and solid dark surface for the dialog box."
+  },
+  "motion": {
+    "dna_reveal": "MANDATORY: 3-4s staged sequence. Use framer-motion staggerChildren. Checkmarks and data pillars appearing sequentially with a brief delay. This is the 'wow moment'.",
+    "page_transitions": "Subtle fade-in and slide-up (y: 10 to y: 0) for new pages/views.",
+    "micro_interactions": "All interactive elements must have hover/focus transitions (excluding transforms from `transition-all`)."
+  },
+  "media": {
+    "image_urls": {
+      "abstract_backgrounds": [
+        {
+          "url": "https://images.unsplash.com/photo-1762278804772-6f5bb8eea759?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2Mzl8MHwxfHNlYXJjaHwzfHxhYnN0cmFjdCUyMHB1cnBsZSUyMG5lb24lMjBkYXRhJTIwbm9kZXMlMjBkYXJrJTIwYmFja2dyb3VuZHxlbnwwfHx8fDE3ODczODQ5NDB8MA&ixlib=rb-4.1.0&q=85",
+          "description": "Abstract purple glowing lines, good for hero section or DNA reveal background"
+        },
+        {
+          "url": "https://images.unsplash.com/photo-1764258058101-47aa0a3a06a3?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2Mzl8MHwxfHNlYXJjaHwyfHxhYnN0cmFjdCUyMHB1cnBsZSUyMG5lb24lMjBkYXRhJTIwbm9kZXMlMjBkYXJrJTIwYmFja2dyb3VuZHxlbnwwfHx8fDE3ODczODQ5NDB8MA&ixlib=rb-4.1.0&q=85",
+          "description": "Abstract purple and black wavy pattern, good for card accents"
+        }
+      ],
+      "creators": [
+        {
+          "url": "https://images.pexels.com/photos/7676490/pexels-photo-7676490.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+          "description": "Asian woman in blue sweater - use for 'Sarah Chen' profile"
+        },
+        {
+          "url": "https://images.pexels.com/photos/28336275/pexels-photo-28336275.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+          "description": "Male content creator - use for user's own avatar or other collaboration suggestions"
+        }
+      ],
+      "thumbnails": [
+        {
+          "url": "https://images.pexels.com/photos/32141311/pexels-photo-32141311.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+          "description": "Smartphone showing YouTube channel page, useful for Opportunity feed context or video references"
+        }
+      ]
+    }
+  },
+  "libraries": {
+    "icons": "@phosphor-icons/react (Install via yarn add @phosphor-icons/react). Use Duotone weight for a premium tech look.",
+    "charts": "recharts (Install via yarn add recharts). Use for radial progress, sparklines, and bubble charts for Trend Radar.",
+    "motion": "framer-motion (Install via yarn add framer-motion). Essential for DNA reveal sequence.",
+    "ui": "shadcn/ui (Tailwind primitives)."
+  },
+  "accessibility": {
+    "contrast": "Ensure text meets APCA standards. Minimal 4.5:1 for normal text. Use text shadow over images.",
+    "motion": "Respect prefers-reduced-motion.",
+    "focus": "Clear focus states for all interactive elements, matching accent color."
+  },
+  "instructions_to_main_agent": {
+    "general": "Build a premium, dark-mode 5-day contest submission ready MVP for CreatorOS. Implement landing page, DNA reveal animation, opportunity feed, trend radar, idea lab, and creator profile.",
+    "data": "Use seeded/demo data for all feeds, profiles, and trends to ensure the UI is fully populated and demo-ready.",
+    "design_system": "Strictly follow the color palette (Background: #0A0A0F, Accent: Electric Violet). Use Outfit for headings and Manrope for body text. All cards must be rounded-2xl with subtle border (border-white/10).",
+    "features_to_implement": [
+      "Public landing / showcase (no login) with 'View Demo' CTA.",
+      "Onboarding — goals selection.",
+      "Animated Creator DNA reveal sequence (3-4s staged checkmarks).",
+      "Creator DNA dashboard (pillars, formats, style, audience interests).",
+      "Opportunity Feed (4-6 cards).",
+      "Opportunity detail with 'How was this calculated?' breakdown.",
+      "Trend Radar (visual bubble/list of 6-10 seeded trends).",
+      "Trend detail page.",
+      "Idea Lab (concept, 4 titles, 3 hooks, structure).",
+      "Creator profile (Sarah Chen) + compatibility score + Propose Collab modal."
+    ]
+  },
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "You tend to converge toward generic, 'on distribution' outputs. Make creative, distinctive frontends that surprise and delight.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Use glass-morphism effects with backdrop filters (12-24px blur).",
+    "You MUST NOT apply universal transition. Eg: `transition: all`. Always add transitions for specific interactive elements.",
+    "You MUST NOT center align the app container, ie do not add `.App { text-align: center; }` in the css file.",
+    "Always use modern button styles like pill-shaped, or sharp button with interaction animations & color relevant to the app style.",
+    "NEVER: use AI assistant Emoji characters like 🤖🧠💭💡🔮🎯 etc for icons.",
+    "Every interaction needs micro-animations - hover states, transitions, parallax effects, and entrance animations.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Subtle grain textures, noise overlays, custom cursors, selection states, and loading animations: separates good from extraordinary.",
+    "Main agent relies on these image URLs. Missing categories = placeholder text which is FORBIDDEN.",
+    "All interactive and key informational elements MUST include a `data-testid` attribute to facilitate robust automated testing.",
+    "CRITICAL: DO NOT use complete `transparent` background in header, overlays, any surface that has content under it."
+  ]
+}
