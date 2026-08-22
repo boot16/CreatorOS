@@ -291,9 +291,10 @@ async def idea_lab(req: IdeaRequest):
     try:
         result = extract_json(text)
     except Exception as e:
-        raise HTTPException(502, f"Could not parse LLM output: {e}")
-    await set_cached_llm("idea_lab", cache_key, result)
-    return result
+        raise HTTPException(502, f"Could not parse LLM output: {e}") from e
+    else:
+        await set_cached_llm("idea_lab", cache_key, result)
+        return result
 
 
 class ProposalRequest(BaseModel):
