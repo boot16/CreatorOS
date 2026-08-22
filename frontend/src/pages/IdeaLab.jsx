@@ -2,20 +2,29 @@ import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { api } from '../lib/api';
-import { Sparkles, Copy, Loader2 } from 'lucide-react';
+import { Sparkles, Copy, Loader2, RotateCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function IdeaLab() {
   const { oppId } = useParams();
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
+  const [regenerating, setRegenerating] = useState(false);
 
-  useEffect(() => {
-    setData(null); setErr(null);
-    api.post('/idea-lab', { opportunity_id: oppId })
-      .then(r => setData(r.data))
-      .catch(e => setErr(e?.response?.data?.detail || 'Generation failed'));
-  }, [oppId]);
+  const load = async (regenerate = false) => {
+    if (regenerate) setRegenerating(true); else setData(null);
+    setErr(null);
+    try {
+      const r = await api.post('/idea-lab', { opportunity_id: oppId, regenerate });
+      setData(r.data);
+      if (regenerate) toast.success('Fresh angle generated');
+    } catch (e) {
+      setErr(e?.response?.data?.detail || 'Generation failed');
+    }
+    setRegenerating(false);
+  };
+
+  useEffect(() => { load(false); /* eslint-disable-next-line */ }, [oppId]);
 
   const copy = (t) => { navigator.clipboard.writeText(t); toast('Copied'); };
 
@@ -23,10 +32,21 @@ export default function IdeaLab() {
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} data-testid="idea-lab">
       <Link to={`/app/opportunity/${oppId}`} className="text-xs text-zinc-500 hover:text-white">← Back to opportunity</Link>
 
-      <div className="mt-6">
-        <div className="chip chip-accent mb-4"><Sparkles size={12} /> Idea Lab</div>
-        <h1 className="font-display text-4xl md:text-5xl font-semibold tracking-tight">Generated with your DNA.</h1>
-        <p className="mt-3 text-zinc-400 max-w-xl">A concept, four titles, three cold-open hooks, and a five-beat structure — grounded in Alex's voice.</p>
+      <div className="mt-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="chip chip-accent mb-4"><Sparkles size={12} /> Idea Lab</div>
+          <h1 className="font-display text-4xl md:text-5xl font-semibold tracking-tight">Generated with your DNA.</h1>
+          <p className="mt-3 text-zinc-400 max-w-xl">A concept, four titles, three cold-open hooks, and a five-beat structure — grounded in Alex's voice.</p>
+        </div>
+        <button
+          onClick={() => load(true)}
+          disabled={regenerating || !data}
+          data-testid="regenerate-btn"
+          className="btn-ghost inline-flex items-center gap-2 disabled:opacity-50"
+        >
+          {regenerating ? <Loader2 size={14} className="animate-spin" /> : <RotateCw size={14} />}
+          {regenerating ? 'Regenerating…' : 'Regenerate'}
+        </button>
       </div>
 
       {!data && !err && (
@@ -34,13 +54,10 @@ export default function IdeaLab() {
           <Loader2 className="animate-spin" size={18} /> Generating with Claude Sonnet 4.6 (~5-8s)…
         </div>
       )}
-      {err && (
-        <div className="card-surface p-6 mt-8 border-red-500/40 text-red-300">{err}</div>
-      )}
+      {err && <div className="card-surface p-6 mt-8 border-red-500/40 text-red-300">{err}</div>}
 
       {data && (
-        <div className="grid lg:grid-cols-3 gap-4 mt-8">
-          {/* Concept */}
+        <div className="grid lg:grid-cols-3 gap-4 mt-8" style={regenerating ? { opacity: 0.6, pointerEvents: 'none' } : {}}>
           <div className="card-surface p-6 lg:col-span-2">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-display text-base font-semibold uppercase tracking-widest">Concept</h3>
@@ -49,7 +66,6 @@ export default function IdeaLab() {
             <p className="text-zinc-100 leading-relaxed" data-testid="idea-concept">{data.concept}</p>
           </div>
 
-          {/* Structure */}
           <div className="card-surface p-6">
             <h3 className="font-display text-base font-semibold uppercase tracking-widest mb-4">Video structure</h3>
             <ol className="space-y-3" data-testid="idea-structure">
@@ -62,7 +78,6 @@ export default function IdeaLab() {
             </ol>
           </div>
 
-          {/* Titles */}
           <div className="card-surface p-6 lg:col-span-2">
             <h3 className="font-display text-base font-semibold uppercase tracking-widest mb-4">Title options</h3>
             <div className="space-y-2" data-testid="idea-titles">
@@ -72,15 +87,12 @@ export default function IdeaLab() {
                     <span className="text-xs text-zinc-500 font-mono">0{i+1}</span>
                     <span className="text-zinc-100">{t}</span>
                   </div>
-                  <button onClick={() => copy(t)} className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-white transition-opacity">
-                    <Copy size={14} />
-                  </button>
+                  <button onClick={() => copy(t)} className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-white"><Copy size={14} /></button>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Hooks */}
           <div className="card-surface p-6">
             <h3 className="font-display text-base font-semibold uppercase tracking-widest mb-4">Cold-open hooks</h3>
             <div className="space-y-3" data-testid="idea-hooks">

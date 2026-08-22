@@ -42,3 +42,17 @@ CreatorOS — Know what to create next, and who to create it with. An AI system 
 - Messaging on collab proposal
 - Saved opportunities
 - Analytics on which recommendations shipped
+
+## Iteration 2 (2026-02-22) — Workspace expansion
+- Real Google OAuth for YouTube channel ingest (endpoints wired; user pastes their own GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET into backend/.env → real DNA)
+- Graceful setup guide modal when creds not configured — shows exact redirect URI to paste
+- Regenerate button in Idea Lab (busts LLM cache, nonce forces fresh angle)
+- Save Opportunity — bookmark on cards, X-Client-Id header, Shortlist page + nav badge
+- Shareable Creator DNA card — server-rendered 1200x675 PNG (Pillow), Share modal with Download / Copy Link / Share on X
+- Studio — AI creative assistant chat, streaming Claude Sonnet 4.6 grounded in creator's DNA, per-session history persisted
+
+### Verification (iteration 2)
+- 8/8 new backend pytest pass
+- 14/14 frontend flows pass (stale-state bug in Shortlist fixed post-test)
+- Real Claude streaming verified (700+ char DNA-grounded reply)
+- Regenerate verified: distinct titles vs cached

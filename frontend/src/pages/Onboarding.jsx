@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowRight, Youtube } from 'lucide-react';
+import { ArrowRight, Youtube, Loader2, Info } from 'lucide-react';
+import { api, API } from '../lib/api';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 
 const GOALS = [
   { id: 'grow', label: 'Grow subscribers', desc: 'Reach new audience' },
@@ -14,11 +16,30 @@ const GOALS = [
 export default function Onboarding() {
   const nav = useNavigate();
   const [picked, setPicked] = useState(new Set(['grow', 'trends']));
+  const [connecting, setConnecting] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [setup, setSetup] = useState(null);
 
   const toggle = (id) => {
     const s = new Set(picked);
     s.has(id) ? s.delete(id) : s.add(id);
     setPicked(s);
+  };
+
+  const connectYouTube = async () => {
+    setConnecting(true);
+    try {
+      const { data } = await api.get('/auth/status');
+      if (!data.configured) {
+        setSetup(data.setup_guide);
+        setSetupOpen(true);
+      } else {
+        window.location.href = `${API}/auth/google/login`;
+      }
+    } catch {
+      toast.error('Could not check auth status.');
+    }
+    setConnecting(false);
   };
 
   return (
@@ -47,7 +68,7 @@ export default function Onboarding() {
                 onClick={() => toggle(g.id)}
                 data-testid={`goal-${g.id}`}
                 className="text-left card-surface p-5 card-hover"
-                style={ active ? { borderColor: 'rgba(138,43,226,0.6)', background: 'rgba(138,43,226,0.06)'} : {}}
+                style={active ? { borderColor: 'rgba(138,43,226,0.6)', background: 'rgba(138,43,226,0.06)'} : {}}
               >
                 <div className="flex items-start justify-between">
                   <div>
@@ -64,23 +85,44 @@ export default function Onboarding() {
         </div>
 
         <div className="mt-12 flex flex-wrap items-center gap-3">
-          <button
-            data-testid="explore-demo-btn"
-            onClick={() => nav('/dna-reveal')}
-            className="btn-primary inline-flex items-center gap-2"
-          >
+          <button data-testid="explore-demo-btn" onClick={() => nav('/dna-reveal')} className="btn-primary inline-flex items-center gap-2">
             Explore Demo <ArrowRight size={16} />
           </button>
           <button
             data-testid="connect-youtube-btn"
-            onClick={() => toast('Real YouTube OAuth is coming soon — try the seeded demo for now.')}
-            className="btn-ghost inline-flex items-center gap-2"
+            onClick={connectYouTube}
+            disabled={connecting}
+            className="btn-ghost inline-flex items-center gap-2 disabled:opacity-60"
           >
-            <Youtube size={16} /> Connect YouTube
+            {connecting ? <Loader2 size={16} className="animate-spin" /> : <Youtube size={16} />} Connect YouTube
           </button>
-          <span className="text-xs text-zinc-500 ml-2">No signup required for demo</span>
+          <span className="text-xs text-zinc-500 ml-2">Real OAuth · reads your channel + last 20 videos</span>
         </div>
       </div>
+
+      <Dialog open={setupOpen} onOpenChange={setSetupOpen}>
+        <DialogContent className="max-w-lg border-white/10" style={{ background: '#12121A' }} data-testid="setup-modal">
+          <DialogHeader>
+            <DialogTitle className="font-display text-xl flex items-center gap-2"><Info size={18} /> YouTube setup required</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-zinc-400">Add Google OAuth credentials to enable real channel ingest. One-time, ~5 minutes.</p>
+          <ol className="mt-4 space-y-3">
+            {(setup?.steps || []).map((s, i) => (
+              <li key={i} className="flex gap-3 text-sm text-zinc-200">
+                <span className="w-6 h-6 shrink-0 rounded-full bg-violet-500/15 text-violet-300 flex items-center justify-center text-xs font-mono">{i+1}</span>
+                <span className="leading-snug">{s}</span>
+              </li>
+            ))}
+          </ol>
+          <div className="mt-4 p-3 rounded-lg bg-white/5 border border-white/10 text-xs">
+            <div className="text-zinc-500 uppercase tracking-widest text-[10px] mb-1">Redirect URI (copy this)</div>
+            <code className="text-violet-300 break-all">{setup?.redirect_uri}</code>
+          </div>
+          <div className="text-xs text-zinc-500 mt-3">
+            The demo works fully without this — connecting only lets you swap Alex's DNA for your own real channel.
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

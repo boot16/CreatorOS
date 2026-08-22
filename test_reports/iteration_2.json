@@ -1,0 +1,44 @@
+{
+  "summary": "CreatorOS iteration 2 verified end-to-end. All 8 iteration-2 pytest cases pass (auth fallback, idea-lab regenerate, shortlist CRUD + isolation, DNA card PNG, assistant streaming + history). All frontend flows in the review request pass except one minor stale-state bug: unbookmarking on the /app/shortlist page itself does not remove the card from the visible list until a page reload (the item is correctly deleted from the backend). Real Claude Sonnet 4.6 outputs verified for idea-lab regenerate (different titles from cached vs regen response) and Studio streaming (700-char DNA-grounded reply referencing '2.4x experiment format'). DNA card PNG served at 1200x675 (~26KB+).",
+  "ai_features_verdicts": [
+    "primary: POST /api/assistant/chat (Claude streaming) - pass - evidence: HTTP 200, content-type=text/plain, chunked stream, 700+ chars assembled reply mentioning 'experiment DNA (2.4x format)', hook writing grounded in creator style. History persisted via GET /api/assistant/history/{session_id} after page reload (2 msgs restored). Skill: ai-testing-llm",
+    "POST /api/idea-lab regenerate:true (Claude cache-bust) - pass - evidence: cached titles=['I Replaced My Employee With AI for 30 Days (Raw Log)','30 Days, No Employee — Just AI Agents Running My Biz','What Actually Breaks When You Fire Staff for AI','I Let AI Run My Operations. Here\\'s What Died First.']; after regenerate=true titles=['I Fired My Assistant and Hired an AI for 30 Days','30-Day Log: AI Agent vs My First Employee','What Actually Breaks When AI Runs Your Business','I Let AI Do My Ops for 30 Days. Here\\'s the Truth.']; arrays differ, structure & hooks also regenerated. Skill: ai-testing-llm",
+    "GET /api/auth/status (Google OAuth fallback) - pass - evidence: 200 OK, configured=false, setup_guide.steps len=5, redirect_uri contains '/api/auth/google/callback', user=null. Setup modal in /onboarding renders 5 steps + code block with correct redirect_uri.",
+    "GET /api/auth/google/login (unconfigured) - pass - evidence: 400 status with 'Google OAuth not configured' detail; no redirect followed.",
+    "GET /api/dna-card/alex-morgan.png - pass - evidence: 200 OK, content-type=image/png, PNG magic header valid, size >20KB, browser <img> naturalWidth=1200 naturalHeight=675.",
+    "GET /api/dna-card/nonexistent.png - pass - evidence: 404 Creator not found."
+  ],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Shortlist.jsx", "issue": "Unbookmarking from the Shortlist page itself does not remove the card from the visible list until a manual reload. The BookmarkButton correctly calls DELETE /api/shortlist/{id} and updates the shared cache in useShortlist(), but Shortlist.jsx keeps its own local `items` state that is only populated in the initial useEffect(load, []). It never subscribes to shortlist cache changes, so the deleted card stays rendered.", "selector": "[data-testid=\"saved-opp-1\"]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration2.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_iteration2.xml"
+  ],
+  "action_items": [
+    "Fix Shortlist.jsx to react to shortlist cache changes: either subscribe to the useShortlist() cache (e.g., re-derive items from `cache` or re-call load() when isSaved(id) flips false), or filter local items when the id is no longer saved. Suggested minimal fix: after toggle, either optimistically remove from local items or call load() from a listener."
+  ],
+  "critical_code_review_comments": [
+    "server.py stream_llm imports emergentintegrations symbols TextDelta/StreamDone at call time; if the SDK is missing or changes signature, only stream endpoint breaks — consider moving to module top-level to fail fast on startup instead of on first request.",
+    "assistant_chat: DB write of the assistant turn happens AFTER the entire stream finishes (`await db.assistant_history.insert_one` in gen() finally-like tail). If the client disconnects mid-stream (user navigates away), the assistant message is never persisted while the user turn is — will yield lopsided history. Consider writing partial content on cancel.",
+    "Shortlist.jsx uses two sources of truth (local items[] and useShortlist() cache) — this is the direct cause of the stale-state UI bug reported above. Consolidate.",
+    "Studio.jsx uses raw fetch() so X-Client-Id from axios interceptor is bypassed; header is manually attached — works, but a common gotcha for future streaming endpoints.",
+    "auth_google.py build_router.google_login: `httpx.QueryParams({k: v})[k]` is an unusual way to URL-encode. Prefer httpx.QueryParams(params) or urllib.parse.urlencode for readability."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration2.py"
+  ],
+  "success_rate": {"backend": "100% (8/8 iteration-2 pytest + 14/14 iteration-1 previously)", "frontend": "94% (13/14 flows) — 1 stale-state bug"},
+  "skills_loaded": ["ai-testing-core", "ai-testing-llm"],
+  "test_credentials": "No auth-gated features tested (Google OAuth is intentionally unconfigured — fallback path only). test_credentials.md is empty; not required for this iteration.",
+  "seed_data_creation": "None. Tests use TEST_-prefixed X-Client-Id UUIDs for shortlist isolation (auto-cleaned by test teardown). LLM cache for opp-1 idea-lab is now populated with a regenerated version (subsequent regen calls will still work because they bust cache).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend URL: https://opportunity-feed-6.preview.emergentagent.com. pytest.ini needs REACT_APP_BACKEND_URL env var to be exported; export from /app/frontend/.env before running pytest. Regenerate uses a nonce embedded in the LLM prompt to force real variation (server.py:272 uuid.uuid4().hex[:6]). Studio's assistant_history insert happens AFTER stream completes — allow ~20-30s for full stream + DB write before checking /api/assistant/history/{session_id}."
+}

@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from './components/ui/sonner';
+import './lib/client'; // side-effect: install X-Client-Id header
 
 import Landing from './pages/Landing';
 import Onboarding from './pages/Onboarding';
@@ -12,11 +13,11 @@ import TrendRadar from './pages/TrendRadar';
 import TrendDetail from './pages/TrendDetail';
 import IdeaLab from './pages/IdeaLab';
 import CreatorProfile from './pages/CreatorProfile';
+import Shortlist from './pages/Shortlist';
+import Studio from './pages/Studio';
 import Layout from './components/Layout';
 
-function AppShell({ children }) {
-  return <Layout>{children}</Layout>;
-}
+function AppShell({ children }) { return <Layout>{children}</Layout>; }
 
 export default function App() {
   return (
@@ -36,6 +37,8 @@ export default function App() {
         <Route path="/app/trends/:id" element={<AppShell><TrendDetail /></AppShell>} />
         <Route path="/app/idea/:oppId" element={<AppShell><IdeaLab /></AppShell>} />
         <Route path="/app/collab" element={<AppShell><CreatorProfile /></AppShell>} />
+        <Route path="/app/shortlist" element={<AppShell><Shortlist /></AppShell>} />
+        <Route path="/app/studio" element={<AppShell><Studio /></AppShell>} />
 
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
