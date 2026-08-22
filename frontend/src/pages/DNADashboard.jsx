@@ -1,38 +1,89 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { api, API, DEMO_CREATOR_ID } from '../lib/api';
+import { useBootstrap } from '../lib/bootstrap';
 import Avatar from '../components/Avatar';
-import { Users, Sparkles, Share2, Download, Copy } from 'lucide-react';
+import { Users, Sparkles, Share2, Download, Copy, Youtube, RefreshCw } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { toast } from 'sonner';
 
 export default function DNADashboard() {
+  const boot = useBootstrap();
   const [c, setC] = useState(null);
   const [isReal, setIsReal] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [me, setMe] = useState(null);
+  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
-    // Try user's own DNA first; fall back to seeded Alex
-    api.get('/me/creator').then(r => {
-      setC({ ...r.data, historical_videos: r.data.historical_videos || [] });
+    if (boot.loading) return;
+    // Production path: authenticated with creator context
+    if (boot.is_authenticated && boot.creator) {
+      setC({ ...boot.creator, historical_videos: boot.creator.historical_videos || [] });
       setIsReal(true);
-    }).catch(() => {
-      api.get(`/creators/${DEMO_CREATOR_ID}`).then(r => setC(r.data));
-    });
-    api.get('/auth/status').then(r => setMe(r.data.user)).catch(() => {});
-    if (new URLSearchParams(window.location.search).get('connected') === '1') {
-      toast.success('YouTube connected — real DNA loaded.');
+      setMe(boot.user);
+      return;
     }
-  }, []);
+    // Demo path: fetch Alex
+    if (boot.is_demo) {
+      api.get(`/creators/${DEMO_CREATOR_ID}`).then(r => setC(r.data));
+    }
+    if (new URLSearchParams(window.location.search).get('connected') === '1') {
+      toast.success('YouTube connected — pulling your channel now.');
+    }
+  }, [boot.loading, boot.is_authenticated, boot.is_demo, boot.creator, boot.user]);
+
+  const syncYouTube = async () => {
+    setSyncing(true);
+    try {
+      const r = await api.post('/v1/sync/youtube');
+      toast.success(`Synced ${r.data.videos_seen} videos`);
+      boot.reload();
+    } catch (e) {
+      const msg = e?.response?.data?.error?.message || 'Sync failed';
+      toast.error(msg);
+    }
+    setSyncing(false);
+  };
 
   const dnaCreatorId = isReal ? 'me' : DEMO_CREATOR_ID;
-  const cardUrl = `${API}/dna-card/${isReal ? DEMO_CREATOR_ID : DEMO_CREATOR_ID}.png`; // Real user card TODO — for now server-render uses seeded only
+  const cardUrl = `${API}/dna-card/${DEMO_CREATOR_ID}.png`;
   const copyLink = () => { navigator.clipboard.writeText(cardUrl); toast('Link copied'); };
   const downloadPng = () => {
     const a = document.createElement('a');
     a.href = cardUrl; a.download = 'creator-dna.png'; document.body.appendChild(a); a.click(); a.remove();
   };
+
+  if (boot.loading) return <div className="text-zinc-400">Loading…</div>;
+
+  // Production + authenticated but no YouTube connected
+  if (boot.is_authenticated && !boot.youtube_connected) {
+    return (
+      <div className="max-w-lg mx-auto text-center py-20" data-testid="dna-connect-state">
+        <div className="chip chip-accent mb-4">Connect YouTube</div>
+        <h1 className="font-display text-3xl font-semibold">Connect your channel to see your DNA.</h1>
+        <p className="mt-3 text-zinc-400">CreatorOS will read your channel + recent videos to build a real DNA profile. No fabricated numbers.</p>
+        <a href={`${API}/auth/google/login`} className="btn-primary inline-flex items-center gap-2 mt-8" data-testid="dna-connect-cta">
+          <Youtube size={16} /> Connect YouTube
+        </a>
+      </div>
+    );
+  }
+
+  // Production + authenticated + connected, DNA not computed yet
+  if (boot.is_authenticated && boot.youtube_connected && boot.dna_status === 'not_computed') {
+    return (
+      <div className="max-w-lg mx-auto text-center py-20" data-testid="dna-not-computed-state">
+        <div className="chip chip-accent mb-4">Almost there</div>
+        <h1 className="font-display text-3xl font-semibold">Sync your channel to compute DNA.</h1>
+        <p className="mt-3 text-zinc-400">Your YouTube is connected. Pull the latest data now and CreatorOS will start building your DNA profile.</p>
+        <button onClick={syncYouTube} disabled={syncing} data-testid="dna-sync-cta"
+                 className="btn-primary inline-flex items-center gap-2 mt-8 disabled:opacity-50">
+          <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} /> {syncing ? 'Syncing…' : 'Sync now'}
+        </button>
+      </div>
+    );
+  }
 
   if (!c) return <div className="text-zinc-400">Loading DNA…</div>;
 

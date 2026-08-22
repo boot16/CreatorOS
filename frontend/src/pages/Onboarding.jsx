@@ -26,6 +26,17 @@ export default function Onboarding() {
     setPicked(s);
   };
 
+  const persistThenGo = async () => {
+    // Persist intent when logged in; ignore silently in demo mode
+    try {
+      await api.put('/v1/creator-intent', {
+        primary_goal: [...picked][0] || null,
+        secondary_goals: [...picked].slice(1),
+      });
+    } catch { /* not logged in — skipped */ }
+    nav('/dna-reveal');
+  };
+
   const connectYouTube = async () => {
     setConnecting(true);
     try {
@@ -85,7 +96,7 @@ export default function Onboarding() {
         </div>
 
         <div className="mt-12 flex flex-wrap items-center gap-3">
-          <button data-testid="explore-demo-btn" onClick={() => nav('/dna-reveal')} className="btn-primary inline-flex items-center gap-2">
+          <button data-testid="explore-demo-btn" onClick={persistThenGo} className="btn-primary inline-flex items-center gap-2">
             Explore Demo <ArrowRight size={16} />
           </button>
           <button

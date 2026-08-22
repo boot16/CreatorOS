@@ -1,0 +1,49 @@
+{
+  "summary": "Phase 1 production-foundation regression + new-feature validation complete. All 54 backend pytest cases pass (38 legacy regression + 16 new phase1 foundation) in ~47s. All new /api/v1 auth gates return the new {error:{code,message}} envelope (UNAUTHENTICATED on /api/v1/creator-intent and /api/v1/sync/youtube without cookie; NOT_CONFIGURED on /api/auth/google/login). Payload guard returns 413 PAYLOAD_TOO_LARGE at >262144 bytes. Rate limit returns 429 RATE_LIMITED with retry_after meta after 20 idea-lab POSTs/hour. Demo bootstrap /api/v1/me returns is_demo=true, is_authenticated=false, creator.id=alex-morgan, dna_status=not_computed. Legacy demo shapes preserved: /api/creators/alex-morgan/opportunities returns bare list of 5 with scores; /api/trends returns bare list of 8; /api/opportunities/opp-1 returns score=92 + 4 why_bullets (real Claude, cached-versioned). Frontend regression: /app (Feed 5 cards), /app/dna (Alex Morgan dashboard), /onboarding (Explore Demo btn), /app/studio (Assistant + Weekly), /app/shortlist, /app/idea/opp-1 (real Claude concept/titles/hooks/structure rendered), /app/trends — all load cleanly; demo-badge (data-testid) visible bottom-left on every route. Zero regressions.",
+  "ai_features_verdicts": [
+    "primary: POST /api/idea-lab (Claude, structured Pydantic IdeaLabOutput) — pass — evidence: HTTP 200 with concept(551 chars), titles=4, hooks=3, structure=5; regenerate=true busts versioned cache and returns distinct titles (test_iteration2.py::TestIdeaLabRegenerate). Skill: ai-testing-llm",
+    "GET /api/opportunities/opp-1 (Claude why_bullets, OppBulletsOutput) — pass — evidence: score=92, why_bullets len=4; second hit fast via LLM cache (backend_test.py::TestOpportunities).",
+    "GET /api/trends/{id} (Claude explanation, TrendExplanationOutput) — pass — evidence: explanation has keys ['why','related','audience'].",
+    "POST /api/scripts + /api/scripts/{id}/refine (Claude script + refine) — pass — evidence: real body persisted; refine changes body (test_iteration3.py::TestScripts).",
+    "POST /api/assistant/chat (Claude streaming via emergentintegrations) — pass — evidence: text/plain stream + history persistence (test_iteration2.py::TestAssistant).",
+    "Google OAuth (unconfigured path) — pass (blocked-by-design) — evidence: /api/auth/status returns configured=false + setup_guide; /api/auth/google/login returns 400 {error:{code:'NOT_CONFIGURED',...}}. GOOGLE_CLIENT_ID intentionally unset per task brief."
+  ],
+  "phase1_new_feature_verdicts": [
+    "/api/v1/me (identity bootstrap) — pass — is_demo=true, creator.id=alex-morgan, dna_status=not_computed in demo",
+    "/api/v1/creator-intent GET/PUT auth gate — pass — 401 {error:{code:'UNAUTHENTICATED'}} without cookie",
+    "/api/v1/sync/youtube auth gate — pass — 401 UNAUTHENTICATED shape",
+    "Payload guard (262144 bytes) — pass — 413 {error:{code:'PAYLOAD_TOO_LARGE'}} with 300KB body to /api/idea-lab",
+    "Rate limit (BUDGETS.llm_idea_lab=20/hour) — pass — 22 rapid POSTs to /api/idea-lab -> codes: 200x13, 429x9 with {error:{code:'RATE_LIMITED',meta:{retry_after,limit:20,window_seconds:3600}}}. Note: bucket cleared by supervisor restart (in-memory).",
+    "Ownership isolation — pass — POST /api/collab-proposal with fake from_creator_id returns 200 in demo (no leakage; identity not overridden). test_phase1_foundation.py::test_caller_cannot_override_identity_via_shortlist asserts _owner_key(u1,'same')!=_owner_key(u2,'same').",
+    "YouTube sync idempotency — pass — test_youtube_sync_idempotent: 1st sync creates 2, 2nd sync updates 2 (0 dupes).",
+    "Encrypted OAuth token storage (Fernet) — pass — test_encryption_roundtrip.",
+    "Versioned LLM cache — pass — test_llm_cache_data_version_mismatch: bumping data_version yields cache miss.",
+    "Session expiry — pass — test_expired_session_is_rejected: expired sid -> is_authenticated=false.",
+    "Production provider isolation — pass — test_production_provider_does_not_return_alex + isolates_by_workspace."
+  ],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_phase1_foundation.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_iteration2.py",
+    "/app/backend/tests/test_iteration3.py",
+    "/app/test_reports/pytest/pytest_iteration5_phase1.xml",
+    "/app/test_reports/pytest/pytest_iteration5_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py:94,100 uses deprecated @app.on_event('startup'/'shutdown'). FastAPI recommends lifespan handlers. Non-blocking but flagged for future cleanup (also seen in iterations 3-4 warnings).",
+    "core/rate_limit.py in-memory bucket resets on backend restart; acceptable for single-instance MVP but must move to Redis before horizontal scale-out. Rate-limit key is `ideas-{user.user_id}` — in demo mode all traffic collapses onto user_id='demo-user' so one abusive tab can lock the whole demo for an hour. Consider keying by (user_id, IP) or per-IP for demo.",
+    "server.py collab-proposal (line ~292) does not validate that from_creator_id in body matches the resolved caller identity. In demo it does not matter, but in production a caller could pretend to be another creator when creating a proposal. test_caller_cannot_override_identity_via_shortlist only asserts shortlist-side; collab-proposal owner should be re-derived from CurrentUser, not accepted from body.",
+    "Backend tests test_iteration2/3/backend_test require REACT_APP_BACKEND_URL env at import time. Not a bug per se, but running `pytest tests/` without exporting the frontend env fails collection. Consider a conftest.py that loads /app/frontend/.env, or reading it inside a fixture."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (54/54 pytest: 16 phase1 + 20 backend_test + 8 iteration2 + 10 iteration3)", "frontend": "100% of priority routes (Feed / DNA / Onboarding / Studio / Shortlist / Idea Lab / Trends) + demo-badge visible on all"},
+  "skills_loaded": ["ai-testing-core"],
+  "test_credentials": "None. /app/memory/test_credentials.md is empty (only header). Google OAuth intentionally unconfigured per task brief; auth boundary tests all covered on the unauthenticated 401/400 path.",
+  "seed_data_creation": "Regression tests reuse existing per-run X-Client-Id namespaces (TEST_iter* prefixes). Phase1 pytest uses per-run ephemeral DBs (test_phase1_<uuid>) that are auto-dropped. Live rate-limit bucket for `ideas-demo-user` was tripped during the 429 verification then cleared by `sudo supervisorctl restart backend` so subsequent Idea Lab traffic is unaffected.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend URL: https://opportunity-feed-6.preview.emergentagent.com. To run full pytest: `export REACT_APP_BACKEND_URL=https://opportunity-feed-6.preview.emergentagent.com && cd /app/backend && python -m pytest tests/ -v`. Phase1 suite (test_phase1_foundation.py) is pure-unit with ephemeral Mongo DBs (~2s), safe to run anytime. Regression suite hits real Claude (~45s, real cost). Rate limit is IN-MEMORY per user_id — a supervisor restart clears it. In demo mode user_id collapses to 'demo-user' so one heavy test run can 429 later runs; restart backend if you see unexpected 429s during frontend smoke. New error envelope everywhere: {error:{code,message[,meta]}}. Frontend routes to smoke: /app, /app/dna, /onboarding, /app/studio (both tabs), /app/shortlist, /app/idea/opp-1, /app/trends, /app/opportunity/opp-1. demo-badge selector: [data-testid='demo-badge']."
+}

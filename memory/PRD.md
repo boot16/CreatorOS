@@ -69,3 +69,39 @@ CreatorOS — Know what to create next, and who to create it with. An AI system 
 - Real Claude script drafts verified (5950 chars, HOOK/BEAT structure)
 - Refine turn verified (5950 → 6422 chars, different content)
 - Slack + Google OAuth intentionally unconfigured — fallback paths verified only
+
+## Phase 1 — Production Foundation (2026-02-22)
+Massive architectural refactor per FOUNDATION-01 + DATA-01 spec. No visible-feature regressions.
+
+### Added
+- `core/` (config, identity, encryption, errors, logging, rate_limit)
+- `models/domain.py` (User, Workspace, WorkspaceMember, Creator, ConnectedPlatform, PlatformCredential, YouTubeChannelSnapshot, CreatorVideo, VideoMetricSnapshot, CreatorIntent, CreatorDNASnapshot, Session, LLMCacheEntry)
+- `repositories/` (single point of Mongo access)
+- `providers/` (Demo{Creator,Trend,Opportunity} + Production{Creator,Trend,Opportunity} factories driven by DATA_MODE)
+- `services/{youtube_sync,llm}.py` (idempotent sync; Pydantic-validated structured LLM output; versioned cache)
+- `api/{schemas,v1}.py` — new `/api/v1/{me,creator-intent,sync/youtube,dna,platforms}` namespace
+- `db/indexes.py` (idempotent index setup)
+- `auth_google.py` refactored to persist encrypted credentials in `platform_credentials`, create User→Workspace→Creator→ConnectedPlatform on login
+- Consistent error envelope `{error:{code,message[,meta]}}`
+- Structured logging with request IDs
+- Rate limiting (in-memory; ready for Redis swap)
+- Request body-size guard (256 KB)
+- `/app/frontend/src/lib/bootstrap.js` + `DemoBadge` + honest DNA connect/sync/not-computed states
+
+### Verified
+- 54/54 backend pytest (38 regression + 16 new phase1)
+- All frontend routes still render
+- Production mode returns `not_computed` — no Alex leakage (unit-verified)
+- YouTube sync is idempotent (unit-verified)
+- Session expiry, encryption roundtrip, cache versioning, rate limit — all unit-verified
+
+### Docs
+- `/app/docs/architecture/production-foundation.md` (full architecture map)
+
+### Deferred (Phase 2+)
+- Real Creator DNA calculation
+- Real trend ingestion
+- Real opportunity candidate generation
+- Automated legacy data migration script
+- Redis-backed rate limit
+- Real per-user DNA card PNG rendering

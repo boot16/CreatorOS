@@ -1,213 +1,197 @@
-"""Google OAuth + YouTube channel ingest.
+"""Google OAuth + YouTube connect.
 
-Env vars required (set in /app/backend/.env, restart backend):
-- GOOGLE_CLIENT_ID
-- GOOGLE_CLIENT_SECRET
-- OAUTH_REDIRECT_URI    (must match one registered in Google Cloud Console)
-- FRONTEND_URL          (used for final redirect after login)
-- SESSION_SECRET        (any long random string)
-
-Setup steps (shown to user in the app when unset):
-1. Go to https://console.cloud.google.com/apis/credentials
-2. Create OAuth 2.0 Client ID (type: Web application)
-3. Add authorized redirect URI: <OAUTH_REDIRECT_URI value>
-4. Enable "YouTube Data API v3" at https://console.cloud.google.com/apis/library/youtube.googleapis.com
-5. Copy Client ID + Secret into backend/.env, then restart backend
-
-Scopes requested:
-- openid + email + profile   (identity)
-- https://www.googleapis.com/auth/youtube.readonly  (channel + video read)
+Refactored for Phase 1 production foundation:
+- Access + refresh tokens are stored ENCRYPTED in `platform_credentials` (not in `users`)
+- Session has server-side expires_at
+- On login: ensure User → Workspace → Creator → ConnectedPlatform pipeline
+- Never returns tokens to the client
 """
 import os
-import uuid
 import secrets
 from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Request, HTTPException, Response, Cookie
+from fastapi import APIRouter, Cookie
 from fastapi.responses import RedirectResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
+
+from core.config import get_settings
+from core.encryption import encrypt
+from core.identity import SESSION_COOKIE
+from core.logging import get_logger
+from models.domain import PlatformCredential
+from repositories import UserRepo, WorkspaceRepo, CreatorRepo, PlatformRepo, CredentialRepo, SessionRepo
+
+log = get_logger("auth.google")
 
 AUTH_SCOPES = "openid email profile https://www.googleapis.com/auth/youtube.readonly"
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 YT_CHANNELS_URL = "https://www.googleapis.com/youtube/v3/channels"
-YT_PLAYLIST_ITEMS_URL = "https://www.googleapis.com/youtube/v3/playlistItems"
-YT_VIDEOS_URL = "https://www.googleapis.com/youtube/v3/videos"
-
-SESSION_COOKIE = "creatoros_sid"
-
-
-def config():
-    return {
-        "client_id": os.environ.get("GOOGLE_CLIENT_ID", "").strip(),
-        "client_secret": os.environ.get("GOOGLE_CLIENT_SECRET", "").strip(),
-        "redirect_uri": os.environ.get("OAUTH_REDIRECT_URI", "").strip(),
-        "frontend_url": os.environ.get("FRONTEND_URL", "").strip(),
-    }
 
 
 def is_configured() -> bool:
-    c = config()
-    return bool(c["client_id"] and c["client_secret"] and c["redirect_uri"])
+    s = get_settings()
+    return bool(s.GOOGLE_CLIENT_ID and s.GOOGLE_CLIENT_SECRET and s.OAUTH_REDIRECT_URI)
 
 
 def build_router(db: AsyncIOMotorDatabase) -> APIRouter:
     router = APIRouter(prefix="/auth", tags=["auth"])
+    session_repo = SessionRepo(db, max_age_seconds=get_settings().SESSION_MAX_AGE)
 
     @router.get("/status")
     async def status(sid: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE)):
-        c = config()
+        s = get_settings()
         configured = is_configured()
         setup_guide = None if configured else {
             "steps": [
                 "Go to https://console.cloud.google.com/apis/credentials",
                 "Create OAuth 2.0 Client ID (type: Web application)",
-                f"Add this authorized redirect URI: {c['redirect_uri'] or '(set OAUTH_REDIRECT_URI in .env)'}",
+                f"Add this authorized redirect URI: {s.OAUTH_REDIRECT_URI or '(set OAUTH_REDIRECT_URI in .env)'}",
                 "Enable YouTube Data API v3: https://console.cloud.google.com/apis/library/youtube.googleapis.com",
                 "Paste Client ID + Secret into /app/backend/.env → restart backend",
             ],
-            "redirect_uri": c["redirect_uri"],
+            "redirect_uri": s.OAUTH_REDIRECT_URI,
         }
         user = None
         if sid:
             sess = await db.sessions.find_one({"sid": sid}, {"_id": 0})
-            if sess:
-                user = await db.users.find_one({"id": sess["user_id"]}, {"_id": 0, "refresh_token": 0, "access_token": 0})
+            if sess and datetime.fromisoformat(sess["expires_at"]) >= datetime.now(timezone.utc):
+                u = await db.users.find_one({"id": sess["user_id"]}, {"_id": 0})
+                if u:
+                    user = {"id": u["id"], "name": u.get("name"), "email": u.get("email"), "picture": u.get("picture")}
         return {"configured": configured, "setup_guide": setup_guide, "user": user}
 
     @router.get("/google/login")
     async def google_login():
+        from core.errors import AppError, Codes
         if not is_configured():
-            raise HTTPException(400, "Google OAuth not configured — check /api/auth/status for setup steps.")
-        c = config()
+            raise AppError(Codes.NOT_CONFIGURED, "Google OAuth not configured — check /api/auth/status for setup steps.", status_code=400)
+        s = get_settings()
         state = secrets.token_urlsafe(24)
-        await db.oauth_states.insert_one({"state": state, "created_at": datetime.now(timezone.utc).isoformat()})
+        await db.oauth_states.insert_one({
+            "state": state,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at_ts": datetime.now(timezone.utc),  # for TTL index
+        })
         params = {
-            "client_id": c["client_id"],
-            "redirect_uri": c["redirect_uri"],
+            "client_id": s.GOOGLE_CLIENT_ID,
+            "redirect_uri": s.OAUTH_REDIRECT_URI,
             "response_type": "code",
             "scope": AUTH_SCOPES,
             "access_type": "offline",
             "prompt": "consent",
             "state": state,
-            "include_granted_scopes": "true",
         }
         url = AUTH_URL + "?" + "&".join(f"{k}={httpx.QueryParams({k: v})[k]}" for k, v in params.items())
         return RedirectResponse(url)
 
     @router.get("/google/callback")
-    async def google_callback(request: Request, code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
-        c = config()
-        fe = c["frontend_url"] or "/"
-        if error:
-            return RedirectResponse(f"{fe}/?auth_error={error}")
-        if not code or not state:
-            return RedirectResponse(f"{fe}/?auth_error=missing_code")
+    async def google_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
+        s = get_settings()
+        fe = s.FRONTEND_URL or "/"
+        if error or not code or not state:
+            return RedirectResponse(f"{fe}/?auth_error={error or 'missing_code'}")
         st = await db.oauth_states.find_one({"state": state})
         if not st:
             return RedirectResponse(f"{fe}/?auth_error=bad_state")
         await db.oauth_states.delete_one({"state": state})
 
-        # Exchange code for tokens
         async with httpx.AsyncClient(timeout=15) as client:
-            token_resp = await client.post(TOKEN_URL, data={
-                "code": code,
-                "client_id": c["client_id"],
-                "client_secret": c["client_secret"],
-                "redirect_uri": c["redirect_uri"],
-                "grant_type": "authorization_code",
+            tk = await client.post(TOKEN_URL, data={
+                "code": code, "client_id": s.GOOGLE_CLIENT_ID, "client_secret": s.GOOGLE_CLIENT_SECRET,
+                "redirect_uri": s.OAUTH_REDIRECT_URI, "grant_type": "authorization_code",
             })
-            if token_resp.status_code != 200:
+            if tk.status_code != 200:
+                log.warning(f"token_exchange_failed status={tk.status_code}")
                 return RedirectResponse(f"{fe}/?auth_error=token_exchange_failed")
-            tokens = token_resp.json()
+            tokens = tk.json()
             access_token = tokens["access_token"]
             refresh_token = tokens.get("refresh_token")
 
-            # Get identity
             uinfo = (await client.get(USERINFO_URL, headers={"Authorization": f"Bearer {access_token}"})).json()
 
-            # Get YouTube channel (own)
-            ch_resp = await client.get(YT_CHANNELS_URL, params={
-                "part": "snippet,statistics,contentDetails",
-                "mine": "true",
-            }, headers={"Authorization": f"Bearer {access_token}"})
             channel = None
-            recent_videos = []
+            ch_resp = await client.get(YT_CHANNELS_URL, params={"part": "snippet,statistics,contentDetails", "mine": "true"},
+                                        headers={"Authorization": f"Bearer {access_token}"})
             if ch_resp.status_code == 200 and ch_resp.json().get("items"):
                 channel = ch_resp.json()["items"][0]
-                uploads_pl = channel.get("contentDetails", {}).get("relatedPlaylists", {}).get("uploads")
-                if uploads_pl:
-                    pl = await client.get(YT_PLAYLIST_ITEMS_URL, params={
-                        "part": "snippet,contentDetails",
-                        "playlistId": uploads_pl,
-                        "maxResults": 20,
-                    }, headers={"Authorization": f"Bearer {access_token}"})
-                    video_ids = [it["contentDetails"]["videoId"] for it in pl.json().get("items", [])]
-                    if video_ids:
-                        vids = await client.get(YT_VIDEOS_URL, params={
-                            "part": "snippet,statistics",
-                            "id": ",".join(video_ids),
-                        }, headers={"Authorization": f"Bearer {access_token}"})
-                        for v in vids.json().get("items", []):
-                            recent_videos.append({
-                                "id": v["id"],
-                                "title": v["snippet"]["title"],
-                                "thumbnail": v["snippet"]["thumbnails"].get("medium", {}).get("url", ""),
-                                "views": int(v["statistics"].get("viewCount", 0)),
-                                "published_at": v["snippet"]["publishedAt"],
-                            })
 
-        # Persist user
-        user_id = uinfo.get("sub") or str(uuid.uuid4())
-        user_doc = {
-            "id": user_id,
-            "email": uinfo.get("email"),
-            "name": uinfo.get("name"),
-            "picture": uinfo.get("picture"),
-            "youtube_channel": {
-                "id": channel["id"] if channel else None,
-                "title": channel["snippet"]["title"] if channel else None,
-                "description": channel["snippet"].get("description", "") if channel else "",
-                "thumbnail": (channel["snippet"].get("thumbnails", {}).get("default", {}) or {}).get("url", "") if channel else None,
-                "subscribers": int(channel["statistics"].get("subscriberCount", 0)) if channel else 0,
-                "video_count": int(channel["statistics"].get("videoCount", 0)) if channel else 0,
-                "view_count": int(channel["statistics"].get("viewCount", 0)) if channel else 0,
-            } if channel else None,
-            "recent_videos": recent_videos,
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-        await db.users.update_one({"id": user_id}, {"$set": user_doc}, upsert=True)
+        # Ensure User → Workspace → Creator → ConnectedPlatform
+        user_repo = UserRepo(db); ws_repo = WorkspaceRepo(db)
+        creator_repo = CreatorRepo(db); platform_repo = PlatformRepo(db)
+        cred_repo = CredentialRepo(db)
 
-        # Create session
-        sid = secrets.token_urlsafe(32)
-        await db.sessions.insert_one({
-            "sid": sid,
-            "user_id": user_id,
-            "created_at": datetime.now(timezone.utc).isoformat(),
+        google_sub = uinfo.get("sub")
+        user = await user_repo.upsert_by_google_sub(google_sub, {
+            "email": uinfo.get("email"), "name": uinfo.get("name"), "picture": uinfo.get("picture"),
         })
+        ws_name = channel["snippet"]["title"] if channel else (user.name or "Workspace")
+        workspace = await ws_repo.create_owner_workspace(user.id, ws_name)
+        creator = await creator_repo.upsert_for_user(user.id, workspace.id, {
+            "display_name": (channel["snippet"]["title"] if channel else user.name) or "Creator",
+            "handle": channel["snippet"]["title"] if channel else None,
+            "bio": (channel["snippet"].get("description", "")[:500] if channel else ""),
+            "avatar_url": ((channel["snippet"].get("thumbnails", {}).get("default", {}) or {}).get("url") if channel else user.picture),
+        })
+
+        if channel:
+            cp = await platform_repo.upsert(
+                creator.id, "youtube", google_sub, {
+                    "external_channel_id": channel["id"],
+                    "display_name": channel["snippet"]["title"],
+                    "handle": channel["snippet"]["title"],
+                    "metadata": {
+                        "subscribers": int(channel["statistics"].get("subscriberCount", 0)),
+                        "video_count": int(channel["statistics"].get("videoCount", 0)),
+                    },
+                    "connection_status": "connected",
+                    "connected_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+            # Encrypt tokens before persistence
+            cred = PlatformCredential(
+                connected_platform_id=cp.id,
+                encrypted_access_token=encrypt(access_token),
+                encrypted_refresh_token=encrypt(refresh_token) if refresh_token else None,
+                scopes=AUTH_SCOPES.split(),
+            )
+            await cred_repo.upsert(cp.id, cred)
+
+        # Session
+        sid = secrets.token_urlsafe(32)
+        await session_repo.create(sid, user.id, user.email, user.name)
+
         resp = RedirectResponse(f"{fe}/app/dna?connected=1")
-        resp.set_cookie(SESSION_COOKIE, sid, max_age=60 * 60 * 24 * 30, httponly=True, samesite="lax", secure=True, path="/")
+        resp.set_cookie(SESSION_COOKIE, sid, max_age=get_settings().SESSION_MAX_AGE,
+                         httponly=True, samesite="lax", secure=True, path="/")
         return resp
 
     @router.post("/logout")
-    async def logout(response: Response, sid: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE)):
+    async def logout(sid: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE)):
         if sid:
-            await db.sessions.delete_one({"sid": sid})
-        response.delete_cookie(SESSION_COOKIE, path="/")
-        return {"ok": True}
+            await session_repo.revoke(sid)
+        from fastapi.responses import JSONResponse
+        resp = JSONResponse({"ok": True})
+        resp.delete_cookie(SESSION_COOKIE, path="/")
+        return resp
 
     return router
 
 
+# Legacy helper kept for backward compat with features.py — resolves user by session id.
 async def current_user(db, sid: Optional[str]):
     if not sid:
         return None
     sess = await db.sessions.find_one({"sid": sid}, {"_id": 0})
     if not sess:
         return None
-    return await db.users.find_one({"id": sess["user_id"]}, {"_id": 0, "access_token": 0, "refresh_token": 0})
+    exp = sess.get("expires_at")
+    if exp and datetime.fromisoformat(exp) < datetime.now(timezone.utc):
+        return None
+    u = await db.users.find_one({"id": sess["user_id"]}, {"_id": 0})
+    if not u:
+        return None
+    return {"id": u["id"], "email": u.get("email"), "name": u.get("name"), "picture": u.get("picture")}

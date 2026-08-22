@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from './components/ui/sonner';
 import './lib/client'; // side-effect: install X-Client-Id header
+import DemoBadge from './components/DemoBadge';
 
 import Landing from './pages/Landing';
 import Onboarding from './pages/Onboarding';
@@ -27,6 +28,7 @@ export default function App() {
       <Toaster theme="dark" position="top-right" toastOptions={{
         style: { background: '#12121A', border: '1px solid rgba(255,255,255,0.1)', color: '#F8F9FA' },
       }} />
+      <DemoBadge />
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/onboarding" element={<Onboarding />} />
