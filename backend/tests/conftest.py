@@ -1,0 +1,26 @@
+"""Test-time setup — loads /app/frontend/.env so REACT_APP_BACKEND_URL is available
+for the iteration-2/3 backend tests without a manual `export` step.
+
+Keep this cheap and side-effect only.
+"""
+import os
+from pathlib import Path
+
+
+def _load_env_file(path: Path):
+    if not path.exists():
+        return
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        k = k.strip()
+        v = v.strip().strip('"').strip("'")
+        os.environ.setdefault(k, v)
+
+
+# Load frontend .env so REACT_APP_BACKEND_URL is available for tests hitting the preview URL.
+_load_env_file(Path("/app/frontend/.env"))
+# Backend .env is loaded by server.py at import; ensure it's also set for standalone tests.
+_load_env_file(Path("/app/backend/.env"))

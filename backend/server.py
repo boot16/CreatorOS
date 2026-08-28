@@ -421,9 +421,19 @@ async def assistant_chat(req: AssistantRequest,
     user = await _identity(sid)
     rl_key = f"chat-{user.user_id}" if user.is_authenticated else f"chat-anon-{x_client_id or 'x'}"
     get_rate_limiter().check(rl_key, *BUDGETS["llm_studio_chat"])
-    # Payload guards
     if sum(len(m.content) for m in req.messages) > 30000:
         raise AppError(Codes.PAYLOAD_TOO_LARGE, "Chat context too large", status_code=413)
+
+    owner_key = _owner_key(user, x_client_id)
+    # Bind session to caller identity on first use; reject if it belongs to someone else.
+    existing = await db.assistant_sessions.find_one({"session_id": req.session_id}, {"_id": 0})
+    if existing and existing.get("owner_key") != owner_key:
+        raise AppError(Codes.FORBIDDEN, "Session does not belong to caller", status_code=403)
+    if not existing:
+        await db.assistant_sessions.insert_one({
+            "session_id": req.session_id, "owner_key": owner_key,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
 
     prov = make_creator_provider(db)
     creator_ = await prov.get_current_creator(user) or await prov.get_creator(DEMO_CREATOR_ID, user) or ALEX
@@ -436,7 +446,8 @@ async def assistant_chat(req: AssistantRequest,
     user_prompt = (convo + f"[USER]: {latest}\n[ASSISTANT]:").strip()
 
     await db.assistant_history.insert_one({
-        "session_id": req.session_id, "role": "user", "content": latest,
+        "session_id": req.session_id, "owner_key": owner_key,
+        "role": "user", "content": latest,
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
 
@@ -452,7 +463,8 @@ async def assistant_chat(req: AssistantRequest,
             elif isinstance(ev, StreamDone):
                 break
         await db.assistant_history.insert_one({
-            "session_id": req.session_id, "role": "assistant", "content": collected,
+            "session_id": req.session_id, "owner_key": owner_key,
+            "role": "assistant", "content": collected,
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
 
@@ -461,11 +473,25 @@ async def assistant_chat(req: AssistantRequest,
 
 
 @api_router.get("/assistant/history/{session_id}")
-async def assistant_history(session_id: str):
+async def assistant_history(session_id: str,
+                             sid: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+                             x_client_id: Optional[str] = Header(default=None, alias="X-Client-Id")):
+    user = await _identity(sid)
+    owner_key = _owner_key(user, x_client_id)
+    # Bind-on-first-use: unknown session → empty. Known session with different owner → 403.
+    sess = await db.assistant_sessions.find_one({"session_id": session_id}, {"_id": 0})
+    if sess and sess.get("owner_key") != owner_key:
+        raise AppError(Codes.FORBIDDEN, "Session does not belong to caller", status_code=403)
     items = await db.assistant_history.find(
-        {"session_id": session_id}, {"_id": 0}
+        {"session_id": session_id, "owner_key": owner_key}, {"_id": 0}
     ).sort("created_at", 1).to_list(500)
     return items
+
+
+@api_router.get("/health")
+async def health():
+    """Deployment health probe — cheap, no DB call required."""
+    return {"status": "ok", "service": "CreatorOS", "data_mode": settings.DATA_MODE}
 
 
 # ---------- Mount routers ----------

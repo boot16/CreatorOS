@@ -50,6 +50,20 @@ async def ensure_indexes(db):
     await db.llm_cache_v2.create_index([("cache_kind", 1), ("entity_id", 1)])
     await db.llm_cache_v2.create_index("expires_at", sparse=True)
 
+    # Assistant sessions (M1: bind session_id to owner_key on first use)
+    await db.assistant_sessions.create_index("session_id", unique=True)
+    await db.assistant_sessions.create_index("owner_key")
+    await db.assistant_history.create_index([("session_id", 1), ("created_at", 1)])
+    await db.assistant_history.create_index("owner_key")
+
+    # Video content analysis (DNA-01 WIP — pre-created for future wiring)
+    await db.video_content_analysis.create_index(
+        [("creator_video_id", 1), ("source_content_hash", 1),
+         ("prompt_version", 1), ("pipeline_version", 1), ("model", 1)],
+        unique=True,
+    )
+    await db.video_content_analysis.create_index("creator_id")
+
     # OAuth states (short-lived) — TTL 10 minutes
     await db.oauth_states.create_index("created_at_ts", expireAfterSeconds=600)
 

@@ -105,3 +105,36 @@ Massive architectural refactor per FOUNDATION-01 + DATA-01 spec. No visible-feat
 - Automated legacy data migration script
 - Redis-backed rate limit
 - Real per-user DNA card PNG rendering
+
+## M1 — Stabilize (2026-02-22)
+Scope: minimum-change stabilization only. NO new product features.
+
+### Fixed
+- **Auth hole in assistant endpoints**: `POST /api/assistant/chat` and `GET /api/assistant/history/{session_id}` now enforce ownership. Session IDs are bound to caller's owner_key on first use; foreign callers receive 403 FORBIDDEN. Verified by curl: attacker cannot read or hijack user-A's session.
+- **YouTube token refresh**: New `services/youtube_tokens.refresh_access_token(db, cp_id)` uses the stored encrypted refresh_token to obtain a new access_token. `services/youtube_sync.YouTubeSyncService.sync()` now transparently retries once with the refreshed token when YouTube returns 401. Safe no-op when refresh_token or Google credentials are absent.
+- **Test runnability**: New `tests/conftest.py` loads `/app/frontend/.env` + `/app/backend/.env` so `pytest tests/` runs without manual `export`.
+- **Deployment health**: New `GET /api/health` returning `{status:"ok", service, data_mode}` — cheap, no DB touch, suitable for k8s liveness/readiness.
+
+### Preserved
+- DNA-01 WIP stubs (`services/dna/constants.py`, `models/dna.py`, `repositories/dna.py`) untouched, unused, and unwired
+- All existing routes, features, tests, frontend
+
+### Files changed
+- `backend/server.py` — assistant chat/history ownership binding, `/api/health` endpoint
+- `backend/services/youtube_sync.py` — 401 → refresh + retry
+- `backend/services/youtube_tokens.py` — NEW, token refresh helper
+- `backend/db/indexes.py` — added indexes for `assistant_sessions`, `assistant_history`, `video_content_analysis`
+- `backend/tests/conftest.py` — NEW, env loader
+- `backend/tests/test_m1_stabilize.py` — NEW, 3 regression tests
+
+### Verified
+- 30/30 phase1 + iteration-1 pytest pass without env export
+- 3/3 new M1 tests pass
+- Attacker cannot POST or GET on another owner's assistant session (curl-verified with new error envelope)
+- `GET /api/health` returns 200
+
+### Not touched (deferred to later milestones)
+- Project domain (M2)
+- Project-aware AI (M3)
+- Instagram (M4)
+- Beta polish (M5)

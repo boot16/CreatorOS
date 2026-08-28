@@ -19,6 +19,7 @@ from models.domain import (
     ConnectedPlatform, YouTubeChannelSnapshot, CreatorVideo, VideoMetricSnapshot,
 )
 from repositories import PlatformRepo, CredentialRepo, YouTubeSourceRepo
+from services.youtube_tokens import refresh_access_token
 
 log = get_logger("services.youtube_sync")
 
@@ -50,6 +51,12 @@ class YouTubeSyncService:
         client = self.http or httpx.AsyncClient(timeout=15)
         try:
             channel = await self._fetch_channel(client, headers)
+            # M1: transparent token refresh on auth-fail; retry once
+            if channel is None:
+                new_token = await refresh_access_token(self._db_for_refresh(), cp.id)
+                if new_token:
+                    headers["Authorization"] = f"Bearer {new_token}"
+                    channel = await self._fetch_channel(client, headers)
             if not channel:
                 raise AppError(Codes.UPSTREAM_ERROR, "YouTube returned no channel data.", status_code=502)
 
@@ -110,10 +117,16 @@ class YouTubeSyncService:
 
     async def _fetch_channel(self, client, headers):
         r = await client.get(YT_CHANNELS, params={"part": "snippet,statistics,contentDetails", "mine": "true"}, headers=headers)
+        if r.status_code == 401:
+            return None  # signal caller to refresh + retry
         if r.status_code != 200:
             raise AppError(Codes.UPSTREAM_ERROR, f"YouTube channels error {r.status_code}", status_code=502)
         items = r.json().get("items", [])
         return items[0] if items else None
+
+    def _db_for_refresh(self):
+        # Small indirection so tests can inject their DB without extra params
+        return self.platform_repo.db
 
     async def _fetch_playlist_items(self, client, headers, playlist_id):
         r = await client.get(YT_PLAYLIST, params={"part": "snippet,contentDetails", "playlistId": playlist_id, "maxResults": 20}, headers=headers)
