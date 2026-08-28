@@ -24,3 +24,16 @@ def _load_env_file(path: Path):
 _load_env_file(Path("/app/frontend/.env"))
 # Backend .env is loaded by server.py at import; ensure it's also set for standalone tests.
 _load_env_file(Path("/app/backend/.env"))
+
+
+# Session-scoped in-process TestClient — motor's AsyncIOMotorClient binds to one event loop, so
+# a single client shared across ALL tests avoids "Event loop is closed" between modules.
+import pytest
+from fastapi.testclient import TestClient
+
+
+@pytest.fixture(scope="session")
+def inproc_client():
+    from server import app
+    with TestClient(app) as c:
+        yield c

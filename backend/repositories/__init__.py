@@ -13,6 +13,7 @@ from models.domain import (
     YouTubeChannelSnapshot, CreatorVideo, VideoMetricSnapshot,
     CreatorIntent, CreatorDNASnapshot, Session, LLMCacheEntry,
     Project, ProjectBrief, CreativeObject, ActivityEvent,
+    ProjectSource, ProjectChatMessage,
 )
 
 
@@ -296,3 +297,32 @@ class ActivityEventRepo:
     async def list_for_project(self, project_id: str, limit: int = 100) -> List[ActivityEvent]:
         cursor = self.db.activity_events.find({"project_id": project_id}, {"_id": 0}).sort("created_at", -1).limit(limit)
         return [ActivityEvent(**d) async for d in cursor]
+
+
+# ---- M3: Sources + Project chat ----
+class ProjectSourceRepo:
+    def __init__(self, db): self.db = db
+
+    async def create(self, src: ProjectSource) -> ProjectSource:
+        await self.db.project_sources.insert_one(src.model_dump())
+        return src
+
+    async def list_for_project(self, project_id: str) -> List[ProjectSource]:
+        cursor = self.db.project_sources.find({"project_id": project_id}, {"_id": 0}).sort("created_at", 1)
+        return [ProjectSource(**d) async for d in cursor]
+
+    async def delete(self, src_id: str, project_id: str) -> bool:
+        r = await self.db.project_sources.delete_one({"id": src_id, "project_id": project_id})
+        return r.deleted_count > 0
+
+
+class ProjectChatRepo:
+    def __init__(self, db): self.db = db
+
+    async def add(self, msg: ProjectChatMessage) -> ProjectChatMessage:
+        await self.db.project_chats.insert_one(msg.model_dump())
+        return msg
+
+    async def list_for_project(self, project_id: str, limit: int = 200) -> List[ProjectChatMessage]:
+        cursor = self.db.project_chats.find({"project_id": project_id}, {"_id": 0}).sort("created_at", 1).limit(limit)
+        return [ProjectChatMessage(**d) async for d in cursor]

@@ -76,4 +76,9 @@ async def ensure_indexes(db):
     await db.activity_events.create_index("id", unique=True)
     await db.activity_events.create_index([("project_id", 1), ("created_at", -1)])
 
+    # M3: Sources + project chat
+    await db.project_sources.create_index("id", unique=True)
+    await db.project_sources.create_index([("project_id", 1), ("created_at", 1)])
+    await db.project_chats.create_index([("project_id", 1), ("created_at", 1)])
+
     log.info("indexes_ensured")

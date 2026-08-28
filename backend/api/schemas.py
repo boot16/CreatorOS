@@ -83,7 +83,7 @@ class TrendExplanationOutput(BaseModel):
 # ---- M2: Project schemas ----
 _CONTENT_TYPES = {"youtube_video", "instagram_reel", "instagram_post", "instagram_carousel"}
 _STATUSES = {"idea", "researching", "developing", "writing", "ready", "shipped", "discarded"}
-_CREATIVE_TYPES = {"notes", "outline", "script", "caption", "carousel"}
+_CREATIVE_TYPES = {"notes", "outline", "script", "caption", "carousel", "research", "direction"}
 
 
 class ProjectBriefBody(BaseModel):
@@ -148,4 +148,53 @@ class ActivityEventResponse(BaseModel):
     creator_id: str
     event_type: str
     metadata: dict = Field(default_factory=dict)
+    created_at: str
+
+
+# ---- M3: Project-Aware AI schemas ----
+class ResearchRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+
+
+class SourceBody(BaseModel):
+    title: str = Field(min_length=1, max_length=500)
+    url: Optional[str] = Field(default=None, max_length=2000)
+    source_type: str = Field(default="url")  # url | text
+    content: str = Field(default="", max_length=20000)
+
+
+class SourceResponse(BaseModel):
+    id: str
+    project_id: str
+    title: str
+    url: Optional[str] = None
+    source_type: str
+    content: str
+    created_at: str
+
+
+class DirectionSelectBody(BaseModel):
+    angle: str = Field(min_length=1, max_length=500)
+    audience_takeaway: str = Field(default="", max_length=2000)
+    format: str = Field(default="", max_length=500)
+    tone: str = Field(default="", max_length=500)
+    why_it_works: str = Field(default="", max_length=2000)
+
+
+class EditRequest(BaseModel):
+    action: str  # rewrite | improve_hook | critique
+    content: str = Field(min_length=1, max_length=100_000)
+    instruction: Optional[str] = Field(default=None, max_length=2000)
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+
+
+class ChatMessageResponse(BaseModel):
+    id: str
+    project_id: str
+    creator_id: str
+    role: str
+    content: str
     created_at: str

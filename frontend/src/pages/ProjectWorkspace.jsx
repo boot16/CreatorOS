@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft, Save, Check, Loader2, Youtube, Instagram, Trash2, Plus,
-  FileText, ListChecks, Sparkles, Rocket, Compass, ChevronRight, Clock,
+  FileText, ListChecks, Sparkles, Rocket, ChevronRight, Clock, MessageSquare,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../lib/api';
@@ -19,6 +19,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
   AlertDialogTrigger,
 } from '../components/ui/alert-dialog';
+import { ResearchTab, DirectionTab, ContentTab, ProjectAssistant } from './ProjectAI';
 
 const STATUSES = [
   { value: 'idea', label: 'Idea' },
@@ -28,14 +29,6 @@ const STATUSES = [
   { value: 'ready', label: 'Ready' },
   { value: 'shipped', label: 'Shipped' },
   { value: 'discarded', label: 'Discarded' },
-];
-
-const CREATIVE_TYPES = [
-  { value: 'notes', label: 'Notes' },
-  { value: 'outline', label: 'Outline' },
-  { value: 'script', label: 'Script' },
-  { value: 'caption', label: 'Caption' },
-  { value: 'carousel', label: 'Carousel' },
 ];
 
 const BRIEF_FIELDS = [
@@ -132,166 +125,6 @@ function BriefTab({ project, onSaved }) {
   );
 }
 
-function CreativeObjectEditor({ obj, projectId, onChanged, onDeleted }) {
-  const [title, setTitle] = useState(obj.title || '');
-  const [content, setContent] = useState(obj.content || '');
-  const [saveState, setSaveState] = useState('saved');
-  const initial = useRef({ title: obj.title || '', content: obj.content || '' });
-
-  useEffect(() => {
-    setTitle(obj.title || '');
-    setContent(obj.content || '');
-    initial.current = { title: obj.title || '', content: obj.content || '' };
-    setSaveState('saved');
-  }, [obj.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useDebouncedEffect(() => {
-    if (title === initial.current.title && content === initial.current.content) return;
-    (async () => {
-      setSaveState('saving');
-      try {
-        const r = await api.patch(`/v1/projects/${projectId}/creative-objects/${obj.id}`, {
-          title, content,
-        });
-        initial.current = { title: r.data.title || '', content: r.data.content || '' };
-        setSaveState('saved');
-        onChanged(r.data);
-      } catch (err) {
-        setSaveState('dirty');
-        toast('Save failed');
-      }
-    })();
-  }, [title, content], 700);
-
-  const del = async () => {
-    try {
-      await api.delete(`/v1/projects/${projectId}/creative-objects/${obj.id}`);
-      onDeleted(obj.id);
-      toast('Deleted');
-    } catch {
-      toast('Delete failed');
-    }
-  };
-
-  return (
-    <div className="card-surface p-5" data-testid={`creative-object-${obj.id}`}>
-      <div className="flex items-center gap-3 mb-3">
-        <span className="chip chip-accent">{obj.type}</span>
-        <Input
-          value={title}
-          onChange={(e) => { setTitle(e.target.value); setSaveState('dirty'); }}
-          placeholder="Untitled"
-          className="bg-transparent border-0 focus-visible:ring-0 flex-1 font-display text-lg font-semibold px-0"
-          data-testid={`creative-object-title-${obj.id}`}
-        />
-        <div className="text-xs text-zinc-500 flex items-center gap-1 min-w-[80px] justify-end">
-          {saveState === 'saving' && <><Loader2 size={11} className="animate-spin" /> Saving</>}
-          {saveState === 'saved' && <><Check size={11} className="text-emerald-400" /> Saved</>}
-          {saveState === 'dirty' && <>Editing…</>}
-        </div>
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <button className="p-2 rounded-full text-zinc-500 hover:text-red-400 hover:bg-white/5" data-testid={`creative-object-delete-${obj.id}`}>
-              <Trash2 size={14} />
-            </button>
-          </AlertDialogTrigger>
-          <AlertDialogContent className="border-white/10" style={{ background: '#12121A' }}>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete this item?</AlertDialogTitle>
-              <AlertDialogDescription>This can't be undone.</AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={del} data-testid={`creative-object-confirm-delete-${obj.id}`}>Delete</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </div>
-      <Textarea
-        value={content}
-        onChange={(e) => { setContent(e.target.value); setSaveState('dirty'); }}
-        placeholder="Start writing…"
-        rows={6}
-        maxLength={100000}
-        data-testid={`creative-object-content-${obj.id}`}
-        className="bg-black/20 border-white/10 font-mono text-sm"
-      />
-    </div>
-  );
-}
-
-function ContentTab({ projectId }) {
-  const [items, setItems] = useState(null);
-  const [newType, setNewType] = useState('notes');
-
-  const load = useCallback(async () => {
-    const r = await api.get(`/v1/projects/${projectId}/creative-objects`);
-    setItems(r.data);
-  }, [projectId]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const create = async () => {
-    try {
-      const r = await api.post(`/v1/projects/${projectId}/creative-objects`, {
-        type: newType, title: '', content: '',
-      });
-      setItems((prev) => [...(prev || []), r.data]);
-      toast('New draft added');
-    } catch {
-      toast('Could not create');
-    }
-  };
-
-  return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-3">
-        <div className="flex-1">
-          <p className="text-sm text-zinc-400">
-            Persist any drafts here — notes, outlines, scripts, captions. Autosaved as you type.
-          </p>
-        </div>
-        <Select value={newType} onValueChange={setNewType}>
-          <SelectTrigger className="w-40 bg-black/20 border-white/10" data-testid="new-object-type-select">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {CREATIVE_TYPES.map((t) => (
-              <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <button onClick={create} data-testid="new-object-btn" className="btn-primary inline-flex items-center gap-2 !py-2 !px-4 text-sm">
-          <Plus size={14} /> Add
-        </button>
-      </div>
-      {items === null ? (
-        <div className="text-zinc-500 text-sm flex items-center gap-2">
-          <Loader2 size={12} className="animate-spin" /> Loading drafts…
-        </div>
-      ) : items.length === 0 ? (
-        <div className="card-surface p-10 text-center" data-testid="content-empty">
-          <FileText className="mx-auto mb-3 text-zinc-500" size={24} />
-          <div className="font-display text-lg">No drafts yet.</div>
-          <div className="text-sm text-zinc-500 mt-1">Add a note, outline, or script above to begin.</div>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {items.map((o) => (
-            <CreativeObjectEditor
-              key={o.id}
-              obj={o}
-              projectId={projectId}
-              onChanged={(u) => setItems((prev) => prev.map((x) => x.id === u.id ? u : x))}
-              onDeleted={(id) => setItems((prev) => prev.filter((x) => x.id !== id))}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function ActivityFeed({ projectId }) {
   const [events, setEvents] = useState(null);
   useEffect(() => {
@@ -314,21 +147,14 @@ function ActivityFeed({ projectId }) {
   );
 }
 
-const PLACEHOLDER_TABS = {
-  research: { icon: Compass, text: 'Research tools will appear here.' },
-  direction: { icon: Sparkles, text: 'Direction and angle exploration will appear here.' },
-  ship: { icon: Rocket, text: 'Shipping and publishing tools will appear here.' },
-};
-
-function PlaceholderPanel({ which }) {
-  const { icon: Icon, text } = PLACEHOLDER_TABS[which];
+function ShipPlaceholder() {
   return (
-    <div className="card-surface p-12 text-center" data-testid={`placeholder-${which}`}>
+    <div className="card-surface p-12 text-center" data-testid="placeholder-ship">
       <div className="w-12 h-12 mx-auto rounded-2xl flex items-center justify-center mb-4"
            style={{ background: 'rgba(138,43,226,0.14)', color: '#C4B5FD' }}>
-        <Icon size={20} />
+        <Rocket size={20} />
       </div>
-      <div className="font-display text-lg">{text}</div>
+      <div className="font-display text-lg">Shipping and publishing tools will appear here.</div>
       <div className="text-sm text-zinc-500 mt-2">Coming in the next milestone.</div>
     </div>
   );
@@ -340,12 +166,20 @@ export default function ProjectWorkspace() {
   const [project, setProject] = useState(null);
   const [notFound, setNotFound] = useState(false);
   const [tab, setTab] = useState('brief');
+  const [sideTab, setSideTab] = useState('activity');
+  const [activityBump, setActivityBump] = useState(0);
 
-  useEffect(() => {
-    api.get(`/v1/projects/${id}`)
-      .then(r => setProject(r.data))
-      .catch(() => setNotFound(true));
+  const reloadProject = useCallback(async () => {
+    try {
+      const r = await api.get(`/v1/projects/${id}`);
+      setProject(r.data);
+      setActivityBump((x) => x + 1);
+    } catch {
+      setNotFound(true);
+    }
   }, [id]);
+
+  useEffect(() => { reloadProject(); }, [reloadProject]);
 
   const setStatus = async (status) => {
     try {
@@ -452,17 +286,50 @@ export default function ProjectWorkspace() {
           <TabsContent value="brief" className="mt-6">
             <BriefTab project={project} onSaved={setProject} />
           </TabsContent>
-          <TabsContent value="research" className="mt-6"><PlaceholderPanel which="research" /></TabsContent>
-          <TabsContent value="direction" className="mt-6"><PlaceholderPanel which="direction" /></TabsContent>
-          <TabsContent value="content" className="mt-6"><ContentTab projectId={project.id} /></TabsContent>
-          <TabsContent value="ship" className="mt-6"><PlaceholderPanel which="ship" /></TabsContent>
+          <TabsContent value="research" className="mt-6">
+            <ResearchTab
+              project={project}
+              onProjectChanged={reloadProject}
+              onCreativeObjectsChanged={() => setActivityBump((x) => x + 1)}
+            />
+          </TabsContent>
+          <TabsContent value="direction" className="mt-6">
+            <DirectionTab
+              project={project}
+              onProjectChanged={reloadProject}
+              onCreativeObjectsChanged={() => setActivityBump((x) => x + 1)}
+            />
+          </TabsContent>
+          <TabsContent value="content" className="mt-6">
+            <ContentTab project={project} onProjectChanged={reloadProject} />
+          </TabsContent>
+          <TabsContent value="ship" className="mt-6"><ShipPlaceholder /></TabsContent>
         </Tabs>
 
-        <aside className="card-surface p-5 h-max sticky top-24">
-          <div className="text-xs uppercase tracking-widest text-zinc-500 mb-4 flex items-center gap-2">
-            <ListChecks size={13} /> Activity
+        <aside className="h-max sticky top-24 space-y-3" data-testid="workspace-sidebar">
+          <div className="inline-flex rounded-full border border-white/10 p-1 bg-white/[0.02] w-full">
+            <button
+              onClick={() => setSideTab('activity')}
+              data-testid="side-tab-activity"
+              className={`flex-1 px-3 py-1.5 rounded-full text-xs font-medium flex items-center justify-center gap-1.5 ${sideTab === 'activity' ? 'bg-violet-500/20 text-white' : 'text-zinc-400'}`}
+            >
+              <ListChecks size={12} /> Activity
+            </button>
+            <button
+              onClick={() => setSideTab('assistant')}
+              data-testid="side-tab-assistant"
+              className={`flex-1 px-3 py-1.5 rounded-full text-xs font-medium flex items-center justify-center gap-1.5 ${sideTab === 'assistant' ? 'bg-violet-500/20 text-white' : 'text-zinc-400'}`}
+            >
+              <MessageSquare size={12} /> Assistant
+            </button>
           </div>
-          <ActivityFeed projectId={project.id} />
+          {sideTab === 'activity' ? (
+            <div className="card-surface p-5">
+              <ActivityFeed key={activityBump} projectId={project.id} />
+            </div>
+          ) : (
+            <ProjectAssistant projectId={project.id} />
+          )}
         </aside>
       </div>
     </div>

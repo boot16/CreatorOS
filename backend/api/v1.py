@@ -12,11 +12,17 @@ from api.schemas import (
     ProjectCreateBody, ProjectUpdateBody, ProjectResponse, ProjectBriefBody,
     CreativeObjectBody, CreativeObjectUpdateBody, CreativeObjectResponse,
     ActivityEventResponse,
+    ResearchRequest, SourceBody, SourceResponse, DirectionSelectBody,
+    EditRequest, ChatRequest, ChatMessageResponse,
     _CONTENT_TYPES, _STATUSES, _CREATIVE_TYPES,
 )
-from repositories import IntentRepo, DNARepo, PlatformRepo, CreatorRepo, ProjectRepo, CreativeObjectRepo, ActivityEventRepo
-from models.domain import Project, CreativeObject, ProjectBrief
+from repositories import IntentRepo, DNARepo, PlatformRepo, CreatorRepo, ProjectRepo, CreativeObjectRepo, ActivityEventRepo, ProjectSourceRepo, ProjectChatRepo
+from models.domain import Project, CreativeObject, ProjectBrief, ProjectSource, ProjectChatMessage
 from services.youtube_sync import YouTubeSyncService
+from services.project_ai import (
+    ProjectContext, run_research, run_directions, run_outline, run_content,
+    run_edit, run_critique, run_assistant_reply,
+)
 from providers import make_creator_provider
 
 
@@ -262,5 +268,242 @@ def build_v1_router(db):
         await _require_owned_project(project_id, user)
         items = await ActivityEventRepo(db).list_for_project(project_id)
         return [ActivityEventResponse(**e.model_dump()) for e in items]
+
+    # ---------------- M3: Project-Aware AI ----------------
+    def _co_to_response(o: CreativeObject) -> CreativeObjectResponse:
+        return _obj_to_response(o)
+
+    async def _upsert_singleton_creative_object(project_id: str, obj_type: str, title: str, content: str) -> CreativeObject:
+        """Some project artifacts (research, direction, outline) are singletons — only one active per project.
+        We upsert by finding an existing object of that type and updating it; otherwise create fresh."""
+        objs = await CreativeObjectRepo(db).list_for_project(project_id)
+        existing = next((o for o in objs if (o.type.value if hasattr(o.type, "value") else o.type) == obj_type), None)
+        if existing:
+            updated = await CreativeObjectRepo(db).update(existing.id, project_id, {"title": title, "content": content})
+            return updated
+        new_obj = CreativeObject(project_id=project_id, type=obj_type, title=title, content=content)
+        await CreativeObjectRepo(db).create(new_obj)
+        return new_obj
+
+    def _format_research_markdown(r) -> str:
+        """Deterministic markdown rendering of ResearchOutput so it lives inside a CreativeObject as editable text."""
+        lines = []
+        if getattr(r, "summary", ""):
+            lines += ["## Summary", r.summary]
+        def _bullets(title, items):
+            items = [i for i in (items or []) if i]
+            if not items: return
+            lines.append(f"\n## {title}")
+            lines.extend(f"- {i}" for i in items)
+        _bullets("Key facts", r.key_facts)
+        _bullets("Insights", r.insights)
+        _bullets("Perspectives", r.perspectives)
+        _bullets("Content opportunities", r.opportunities)
+        _bullets("Open questions", r.open_questions)
+        return "\n".join(lines).strip()
+
+    def _format_direction_markdown(d) -> str:
+        return (
+            f"## Angle\n{d.get('angle','')}\n\n"
+            f"## Audience takeaway\n{d.get('audience_takeaway','')}\n\n"
+            f"## Format / approach\n{d.get('format','')}\n\n"
+            f"## Tone\n{d.get('tone','')}\n\n"
+            f"## Why this works\n{d.get('why_it_works','')}"
+        ).strip()
+
+    def _format_outline_markdown(o) -> str:
+        lines = []
+        for section in o.outline:
+            lines.append(f"## {section.label}")
+            for b in section.beats:
+                lines.append(f"- {b}")
+            lines.append("")
+        return "\n".join(lines).strip()
+
+    async def _load_context(project: Project) -> ProjectContext:
+        return await ProjectContext.load(db, project)
+
+    def _bump_status_if(project: Project, current_allowed: set, new_status: str):
+        """Only advance status forward from allowed early stages — never regress a creator who is already ahead."""
+        cur = project.status.value if hasattr(project.status, "value") else project.status
+        return new_status if cur in current_allowed else None
+
+    # ----- Sources CRUD -----
+    @router.post("/projects/{project_id}/sources", response_model=SourceResponse)
+    async def add_source(project_id: str, body: SourceBody, user: CurrentUser = Depends(_user_dep)):
+        creator_id, _ = _require_authed(user)
+        await _require_owned_project(project_id, user)
+        if body.source_type not in {"url", "text"}:
+            raise AppError(Codes.INVALID_INPUT, "source_type must be 'url' or 'text'", status_code=400)
+        if body.source_type == "url" and not (body.url and body.url.strip()):
+            raise AppError(Codes.INVALID_INPUT, "URL required for url source", status_code=400)
+        src = ProjectSource(
+            project_id=project_id, title=body.title.strip(),
+            url=(body.url.strip() if body.url else None),
+            source_type=body.source_type, content=body.content or "",
+        )
+        await ProjectSourceRepo(db).create(src)
+        await ActivityEventRepo(db).add(project_id, creator_id, "source_added", {"id": src.id, "type": src.source_type})
+        return SourceResponse(**src.model_dump())
+
+    @router.get("/projects/{project_id}/sources", response_model=list[SourceResponse])
+    async def list_sources(project_id: str, user: CurrentUser = Depends(_user_dep)):
+        _require_authed(user)
+        await _require_owned_project(project_id, user)
+        items = await ProjectSourceRepo(db).list_for_project(project_id)
+        return [SourceResponse(**s.model_dump()) for s in items]
+
+    @router.delete("/projects/{project_id}/sources/{source_id}")
+    async def delete_source(project_id: str, source_id: str, user: CurrentUser = Depends(_user_dep)):
+        creator_id, _ = _require_authed(user)
+        await _require_owned_project(project_id, user)
+        ok = await ProjectSourceRepo(db).delete(source_id, project_id)
+        if not ok:
+            raise AppError(Codes.NOT_FOUND, "Source not found", status_code=404)
+        await ActivityEventRepo(db).add(project_id, creator_id, "source_deleted", {"id": source_id})
+        return {"ok": True}
+
+    # ----- AI: Research -----
+    @router.post("/projects/{project_id}/ai/research")
+    async def ai_research(project_id: str, body: ResearchRequest, user: CurrentUser = Depends(_user_dep)):
+        creator_id, _ = _require_authed(user)
+        proj = await _require_owned_project(project_id, user)
+        get_rate_limiter().check(f"proj-ai-{creator_id}", *BUDGETS["project_ai_generate"])
+        ctx = await _load_context(proj)
+        try:
+            result = await run_research(ctx, body.question)
+        except AppError:
+            raise
+        markdown = _format_research_markdown(result)
+        obj = await _upsert_singleton_creative_object(project_id, "research", "Research brief", markdown)
+        # Status auto-advance idea → researching
+        bump = _bump_status_if(proj, {"idea"}, "researching")
+        if bump:
+            await ProjectRepo(db).update(project_id, creator_id, {"status": bump})
+            await ActivityEventRepo(db).add(project_id, creator_id, "project_status_changed", {"status": bump})
+        await ActivityEventRepo(db).add(project_id, creator_id, "research_generated", {"question": body.question[:200]})
+        return {
+            "creative_object": _obj_to_response(obj),
+            "structured": result.model_dump(),
+        }
+
+    # ----- AI: Directions -----
+    @router.post("/projects/{project_id}/ai/directions")
+    async def ai_directions(project_id: str, user: CurrentUser = Depends(_user_dep)):
+        creator_id, _ = _require_authed(user)
+        proj = await _require_owned_project(project_id, user)
+        get_rate_limiter().check(f"proj-ai-{creator_id}", *BUDGETS["project_ai_generate"])
+        ctx = await _load_context(proj)
+        result = await run_directions(ctx)
+        return {"directions": [d.model_dump() for d in result.directions]}
+
+    @router.put("/projects/{project_id}/ai/direction/selected", response_model=CreativeObjectResponse)
+    async def ai_direction_select(project_id: str, body: DirectionSelectBody, user: CurrentUser = Depends(_user_dep)):
+        creator_id, _ = _require_authed(user)
+        proj = await _require_owned_project(project_id, user)
+        markdown = _format_direction_markdown(body.model_dump())
+        title = body.angle[:120] if body.angle else "Selected direction"
+        obj = await _upsert_singleton_creative_object(project_id, "direction", title, markdown)
+        bump = _bump_status_if(proj, {"idea", "researching"}, "developing")
+        if bump:
+            await ProjectRepo(db).update(project_id, creator_id, {"status": bump})
+            await ActivityEventRepo(db).add(project_id, creator_id, "project_status_changed", {"status": bump})
+        await ActivityEventRepo(db).add(project_id, creator_id, "direction_selected", {"angle": body.angle[:200]})
+        return _obj_to_response(obj)
+
+    # ----- AI: Outline -----
+    @router.post("/projects/{project_id}/ai/outline")
+    async def ai_outline(project_id: str, user: CurrentUser = Depends(_user_dep)):
+        creator_id, _ = _require_authed(user)
+        proj = await _require_owned_project(project_id, user)
+        get_rate_limiter().check(f"proj-ai-{creator_id}", *BUDGETS["project_ai_generate"])
+        ctx = await _load_context(proj)
+        result = await run_outline(ctx)
+        markdown = _format_outline_markdown(result)
+        obj = await _upsert_singleton_creative_object(project_id, "outline", "Outline", markdown)
+        bump = _bump_status_if(proj, {"idea", "researching", "developing"}, "writing")
+        if bump:
+            await ProjectRepo(db).update(project_id, creator_id, {"status": bump})
+            await ActivityEventRepo(db).add(project_id, creator_id, "project_status_changed", {"status": bump})
+        await ActivityEventRepo(db).add(project_id, creator_id, "outline_generated", {})
+        return {
+            "creative_object": _obj_to_response(obj),
+            "structured": result.model_dump(),
+        }
+
+    # ----- AI: Content -----
+    @router.post("/projects/{project_id}/ai/content", response_model=CreativeObjectResponse)
+    async def ai_content(project_id: str, user: CurrentUser = Depends(_user_dep)):
+        creator_id, _ = _require_authed(user)
+        proj = await _require_owned_project(project_id, user)
+        get_rate_limiter().check(f"proj-ai-{creator_id}", *BUDGETS["project_ai_generate"])
+        ctx = await _load_context(proj)
+        text, out_type = await run_content(ctx)
+        # Always create a NEW creative object — never overwrite existing script/caption/carousel silently
+        new_obj = CreativeObject(
+            project_id=project_id, type=out_type,
+            title=f"AI draft — {proj.title[:80]}", content=text,
+        )
+        await CreativeObjectRepo(db).create(new_obj)
+        bump = _bump_status_if(proj, {"idea", "researching", "developing"}, "writing")
+        if bump:
+            await ProjectRepo(db).update(project_id, creator_id, {"status": bump})
+            await ActivityEventRepo(db).add(project_id, creator_id, "project_status_changed", {"status": bump})
+        await ActivityEventRepo(db).add(project_id, creator_id, "content_generated", {"type": out_type, "id": new_obj.id})
+        return _obj_to_response(new_obj)
+
+    # ----- AI: Edit / critique — return proposals; NEVER overwrite unless caller commits via PATCH -----
+    @router.post("/projects/{project_id}/ai/edit")
+    async def ai_edit(project_id: str, body: EditRequest, user: CurrentUser = Depends(_user_dep)):
+        creator_id, _ = _require_authed(user)
+        proj = await _require_owned_project(project_id, user)
+        get_rate_limiter().check(f"proj-ai-{creator_id}", *BUDGETS["project_ai_generate"])
+        ctx = await _load_context(proj)
+        if body.action == "critique":
+            result = await run_critique(ctx, body.content)
+            return {"action": "critique", "critique": result.model_dump()}
+        if body.action not in {"rewrite", "improve_hook"}:
+            raise AppError(Codes.INVALID_INPUT, "Unknown action", status_code=400)
+        proposal = await run_edit(ctx, action=body.action, content=body.content, instruction=body.instruction or "")
+        return {"action": body.action, "proposal": proposal}
+
+    # ----- AI: Project-scoped assistant chat -----
+    @router.get("/projects/{project_id}/ai/chat", response_model=list[ChatMessageResponse])
+    async def ai_chat_history(project_id: str, user: CurrentUser = Depends(_user_dep)):
+        _require_authed(user)
+        await _require_owned_project(project_id, user)
+        items = await ProjectChatRepo(db).list_for_project(project_id)
+        return [ChatMessageResponse(**m.model_dump()) for m in items]
+
+    @router.post("/projects/{project_id}/ai/chat", response_model=ChatMessageResponse)
+    async def ai_chat_send(project_id: str, body: ChatRequest, user: CurrentUser = Depends(_user_dep)):
+        creator_id, _ = _require_authed(user)
+        proj = await _require_owned_project(project_id, user)
+        get_rate_limiter().check(f"proj-chat-{creator_id}", *BUDGETS["project_ai_chat"])
+        # Persist user turn first — if AI fails, user turn remains visible; no destructive overwrite of anything.
+        user_msg = ProjectChatMessage(
+            project_id=project_id, creator_id=creator_id,
+            role="user", content=body.message,
+        )
+        await ProjectChatRepo(db).add(user_msg)
+        history_docs = await ProjectChatRepo(db).list_for_project(project_id)
+        history = [{"role": m.role, "content": m.content} for m in history_docs]
+        ctx = await _load_context(proj)
+        try:
+            reply_text = await run_assistant_reply(ctx, history[:-1], body.message)
+        except AppError as e:
+            # Persist a visible failure marker so the timeline is honest, and re-raise
+            err = ProjectChatMessage(
+                project_id=project_id, creator_id=creator_id,
+                role="assistant", content=f"(assistant temporarily unavailable — {e.message})",
+            )
+            await ProjectChatRepo(db).add(err)
+            raise
+        assistant_msg = ProjectChatMessage(
+            project_id=project_id, creator_id=creator_id,
+            role="assistant", content=reply_text,
+        )
+        await ProjectChatRepo(db).add(assistant_msg)
+        return ChatMessageResponse(**assistant_msg.model_dump())
 
     return router

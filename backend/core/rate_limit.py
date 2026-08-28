@@ -44,4 +44,7 @@ BUDGETS = {
     "llm_studio_chat": (60, 3600),     # 60 chat messages per hour
     "oauth_login": (10, 600),          # 10 OAuth kicks per 10 minutes
     "collab_proposal": (10, 3600),
+    # M3: Project-Aware AI
+    "project_ai_generate": (30, 3600), # research / directions / outline / content / edit
+    "project_ai_chat": (60, 3600),     # assistant messages
 }

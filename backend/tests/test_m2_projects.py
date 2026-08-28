@@ -27,11 +27,9 @@ def cleandb():
     client.close()
 
 
-@pytest.fixture(scope="module")
-def client():
-    from server import app
-    with TestClient(app) as c:
-        yield c
+@pytest.fixture
+def client(inproc_client):
+    return inproc_client
 
 
 def test_list_projects_empty(client, cleandb):

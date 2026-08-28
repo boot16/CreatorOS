@@ -258,6 +258,8 @@ class CreativeObjectType(str, Enum):
     script = "script"
     caption = "caption"
     carousel = "carousel"
+    research = "research"
+    direction = "direction"
 
 
 class CreativeObject(BaseModel):
@@ -268,6 +270,27 @@ class CreativeObject(BaseModel):
     content: str = ""
     created_at: str = Field(default_factory=_now)
     updated_at: str = Field(default_factory=_now)
+
+
+class ProjectSource(BaseModel):
+    """M3: research sources attached to a Project (user-provided URLs or pasted text)."""
+    id: str = Field(default_factory=_uid)
+    project_id: str
+    title: str
+    url: Optional[str] = None
+    source_type: str = "url"  # url | text
+    content: str = ""  # extracted/pasted content or short summary
+    created_at: str = Field(default_factory=_now)
+
+
+class ProjectChatMessage(BaseModel):
+    """M3: assistant messages scoped to a project."""
+    id: str = Field(default_factory=_uid)
+    project_id: str
+    creator_id: str
+    role: str  # user | assistant
+    content: str
+    created_at: str = Field(default_factory=_now)
 
 
 class ActivityEvent(BaseModel):
