@@ -206,6 +206,79 @@ class Session(BaseModel):
     created_at: str = Field(default_factory=_now)
 
 
+# ---- Projects (M2) ----
+class ProjectContentType(str, Enum):
+    youtube_video = "youtube_video"
+    instagram_reel = "instagram_reel"
+    instagram_post = "instagram_post"
+    instagram_carousel = "instagram_carousel"
+
+
+class ProjectPlatform(str, Enum):
+    youtube = "youtube"
+    instagram = "instagram"
+
+
+class ProjectStatus(str, Enum):
+    idea = "idea"
+    researching = "researching"
+    developing = "developing"
+    writing = "writing"
+    ready = "ready"
+    shipped = "shipped"
+    discarded = "discarded"
+
+
+class ProjectBrief(BaseModel):
+    topic: Optional[str] = None
+    objective: Optional[str] = None
+    target_audience: Optional[str] = None
+    content_format: Optional[str] = None
+    takeaway: Optional[str] = None
+    working_title: Optional[str] = None
+
+
+class Project(BaseModel):
+    id: str = Field(default_factory=_uid)
+    creator_id: str
+    workspace_id: str
+    title: str
+    content_type: ProjectContentType
+    platform: ProjectPlatform
+    objective: Optional[str] = None
+    status: ProjectStatus = ProjectStatus.idea
+    brief: ProjectBrief = Field(default_factory=ProjectBrief)
+    created_at: str = Field(default_factory=_now)
+    updated_at: str = Field(default_factory=_now)
+
+
+class CreativeObjectType(str, Enum):
+    notes = "notes"
+    outline = "outline"
+    script = "script"
+    caption = "caption"
+    carousel = "carousel"
+
+
+class CreativeObject(BaseModel):
+    id: str = Field(default_factory=_uid)
+    project_id: str
+    type: CreativeObjectType
+    title: Optional[str] = None
+    content: str = ""
+    created_at: str = Field(default_factory=_now)
+    updated_at: str = Field(default_factory=_now)
+
+
+class ActivityEvent(BaseModel):
+    id: str = Field(default_factory=_uid)
+    project_id: str
+    creator_id: str
+    event_type: str
+    metadata: dict = Field(default_factory=dict)
+    created_at: str = Field(default_factory=_now)
+
+
 # ---- Versioned LLM cache ----
 class LLMCacheEntry(BaseModel):
     id: str = Field(default_factory=_uid)

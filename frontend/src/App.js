@@ -18,6 +18,8 @@ import Shortlist from './pages/Shortlist';
 import Studio from './pages/Studio';
 import ScriptsList from './pages/ScriptsList';
 import ScriptEditor from './pages/ScriptEditor';
+import Projects from './pages/Projects';
+import ProjectWorkspace from './pages/ProjectWorkspace';
 import Layout from './components/Layout';
 
 function AppShell({ children }) { return <Layout>{children}</Layout>; }
@@ -34,7 +36,9 @@ export default function App() {
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/dna-reveal" element={<DNAReveal />} />
 
-        <Route path="/app" element={<AppShell><OpportunityFeed /></AppShell>} />
+        <Route path="/app" element={<AppShell><Projects /></AppShell>} />
+        <Route path="/app/projects/:id" element={<AppShell><ProjectWorkspace /></AppShell>} />
+        <Route path="/app/feed" element={<AppShell><OpportunityFeed /></AppShell>} />
         <Route path="/app/dna" element={<AppShell><DNADashboard /></AppShell>} />
         <Route path="/app/opportunity/:id" element={<AppShell><OpportunityDetail /></AppShell>} />
         <Route path="/app/trends" element={<AppShell><TrendRadar /></AppShell>} />

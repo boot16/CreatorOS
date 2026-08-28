@@ -138,3 +138,49 @@ Scope: minimum-change stabilization only. NO new product features.
 - Project-aware AI (M3)
 - Instagram (M4)
 - Beta polish (M5)
+
+---
+
+## M2 — Universal Project Workspace (2026-08-28) ✅
+
+**Scope:** Turned CreatorOS from feature-collection into a project-centric workspace.
+
+**Backend (added, no rewrites)**
+- `models/domain.py`: `Project`, `ProjectBrief`, `CreativeObject`, `ActivityEvent`, enums (`ProjectContentType`, `ProjectPlatform`, `ProjectStatus`, `CreativeObjectType`).
+- `repositories/__init__.py`: `ProjectRepo`, `CreativeObjectRepo`, `ActivityEventRepo`.
+- `api/v1.py`: `/api/v1/projects` CRUD, `PUT /projects/{id}/brief`, `/projects/{id}/creative-objects` CRUD, `GET /projects/{id}/activity`. Every route ownership-scoped by `creator_id` — non-owners get 404 (no existence leak).
+- `api/schemas.py`: Project*, CreativeObject*, ActivityEventResponse schemas.
+- `db/indexes.py`: indexes for projects (creator_id+updated_at, creator_id+status), creative_objects (project_id+created_at), activity_events (project_id+created_at).
+
+**Frontend (new pages, minimal footprint)**
+- `pages/Projects.jsx`: dashboard at `/app` with empty state + `New project` dialog (title, content type select, optional objective). Auto-derives platform from content type.
+- `pages/ProjectWorkspace.jsx`: `/app/projects/:id`. Tabs: Brief (functional, autosave 700ms debounce, "All changes saved" indicator), Research/Direction/Ship (honest placeholders), Content (create/edit/delete CreativeObjects with autosave). Sticky ActivityFeed sidebar. Inline title editor + status Select + Discard flow.
+- `App.js`: `/app` → Projects, `/app/projects/:id` → ProjectWorkspace, `/app/feed` → old OpportunityFeed (kept accessible for demo).
+- `components/Layout.jsx`: nav now leads with Projects; Feed is secondary.
+
+**Tests**
+- `tests/test_m2_projects.py` (11 in-process pytest cases) — all pass.
+- Testing agent: 26/26 (in-process + HTTP-through-ingress) pass. Frontend E2E: all M2 flows verified (create, autosave, reload persistence, status change, creative object CRUD, discard, ownership isolation).
+- Regression: existing 57 tests still pass (68 total).
+
+**M2 acceptance — verified**
+- Real/demo user opens `/app` → honest project dashboard.
+- Creates YouTube Video / Instagram Reel/Post/Carousel project.
+- Opens `/app/projects/:id` and edits brief; refresh preserves data.
+- Sees project on dashboard; changes status.
+- Creates/edits basic CreativeObjects.
+- Sees activity events.
+- Foreign creator IDs → 404 on every project endpoint (no existence leak).
+- No YouTube/Instagram connection required.
+
+**Shortcuts / Deferred (intentional per Credit-Constrained Directive)**
+- Brief is embedded on the Project doc (no separate collection). Simpler, still relational-shaped for M3.
+- Discard = `status='discarded'` (hidden from default list). No hard-delete endpoint — soft-safe.
+- Research / Direction / Ship tabs are placeholder-only (M3 work).
+- No AI features in M2 — Idea Lab / Studio remain untouched under old routes.
+
+**Not touched (per directive)**
+- Creator DNA-01 remains halted.
+- YouTube sync, Instagram, real authentication, demo experiences (Feed, Trends, Idea Lab, Studio, Scripts, Shortlist, Collab) untouched — reachable under `/app/feed` etc.
+
+**Next (M3):** Project-Aware AI — context builder, research/sources, direction/outline/script generation using existing LLM abstraction.

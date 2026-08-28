@@ -1,10 +1,11 @@
 import React from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
-import { Sparkles, Radar, Lightbulb, Users, Bookmark, MessageSquare, FileText } from 'lucide-react';
+import { Sparkles, Radar, Lightbulb, Users, Bookmark, MessageSquare, FileText, LayoutGrid } from 'lucide-react';
 import { useShortlist } from '../lib/shortlist';
 
 const links = [
-  { to: '/app', label: 'Feed', icon: Sparkles, end: true },
+  { to: '/app', label: 'Projects', icon: LayoutGrid, end: true },
+  { to: '/app/feed', label: 'Feed', icon: Sparkles },
   { to: '/app/trends', label: 'Trends', icon: Radar },
   { to: '/app/dna', label: 'DNA', icon: Lightbulb },
   { to: '/app/studio', label: 'Studio', icon: MessageSquare },

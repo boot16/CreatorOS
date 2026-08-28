@@ -1,0 +1,31 @@
+{
+  "summary": "M2 Project-centric workspace validated end-to-end. Backend: 11 in-process pytest cases in test_m2_projects.py + 15 new HTTP-through-ingress cases in test_m2_http.py all pass (26/26, 100%). Verified: empty list, create youtube/instagram_reel/instagram_post/instagram_carousel with correct platform mapping, reject content_type='tiktok' (400), GET nonexistent -> 404, PATCH title bumps updated_at, PATCH status='researching' OK / 'bogus' -> 400, discard hides from list, brief PUT partial-update preserves unset keys and persists across refetch, creative-object CRUD (invalid type='poem' -> 400), activity events include project_created/brief_updated/project_status_changed/creative_object_created, ownership isolation via directly-seeded foreign-creator project returns 404 on all 5 endpoints (GET/PATCH project, PUT brief, GET creative-objects, GET activity). Frontend: /app renders projects-dashboard + projects-empty; new-project-btn opens dialog; created project navigates to /app/projects/:id; brief-topic autosave shows 'All changes saved' within ~1s; brief content persists after reload; project-status-select changes to 'Ready' and persists across reload; tab-content renders content-empty then new-object-btn creates a NOTES card with data-testid='creative-object-<uuid>' visible; Research/Direction/Ship tabs render placeholder-research/direction/ship as expected (non-functional); back-to-projects returns to dashboard with project-card-<id> and project-status-<id> chip='Ready'; discard flow (project-discard-btn -> project-confirm-discard) removes card and empty state reappears.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "New project dialog + Discard confirm dialog", "issues": ["Radix DialogContent missing aria-describedby / Description — console warning ‘Missing Description or aria-describedby={undefined} for {DialogContent}’. Add a <DialogDescription> for accessibility."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_m2_projects.py",
+    "/app/backend/tests/test_m2_http.py",
+    "/app/test_reports/pytest/pytest_iteration6_m2_http.xml"
+  ],
+  "action_items": [
+    "Add <DialogDescription> to new-project dialog and discard-confirm dialog to remove Radix a11y warnings."
+  ],
+  "critical_code_review_comments": [
+    "M2 route handlers and repositories look clean; ownership check is enforced by _owner_key filter — every read/write path returns 404 on foreign-creator rows without leaking existence. Good.",
+    "Autosave uses debounce visible via brief-save-state text ‘All changes saved’ within ~1s; persists to /projects/{id}/brief PUT with partial-key semantics. Confirmed by refetch.",
+    "Consider a DELETE /projects/{id} soft-delete alias for symmetry — currently discard = PATCH status='discarded', which is fine but couple it with GET default-filter, already correct."
+  ],
+  "updated_files": ["/app/backend/tests/test_m2_http.py"],
+  "success_rate": {"backend": "100% (26/26 M2)", "frontend": "100% of the requested M2 flows"},
+  "test_credentials": "N/A — demo mode (creator_id=alex-morgan) auto-resolved.",
+  "seed_data_creation": "Wiped projects/creative_objects/activity_events before frontend E2E. Ownership isolation test seeds one project with creator_id='other-creator' and deletes it in the finally block. Regression Idea Lab / Assistant not re-run (out of scope for M2).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend URL: https://opportunity-feed-6.preview.emergentagent.com. M2 HTTP suite: `export REACT_APP_BACKEND_URL=https://opportunity-feed-6.preview.emergentagent.com && cd /app/backend && python -m pytest tests/test_m2_http.py -v` (~3s). In-process: `python -m pytest tests/test_m2_projects.py -v` (~1s, uses test_database_m2). Frontend testids per problem statement all verified: projects-dashboard, projects-empty, new-project-btn, new-project-{title,type,objective}-input, new-project-submit, project-workspace, tab-{brief,research,direction,content,ship}, brief-{topic,objective,target_audience,content_format,takeaway,working_title}-input, brief-save-state, project-status-select, new-object-btn, creative-object-<uuid>, creative-object-{title,content,delete,confirm-delete}-<uuid>, back-to-projects, project-discard-btn, project-confirm-discard, project-card-<uuid>, project-status-<uuid>, placeholder-{research,direction,ship}."
+}

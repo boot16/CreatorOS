@@ -12,6 +12,7 @@ from models.domain import (
     User, Workspace, WorkspaceMember, Creator, ConnectedPlatform, PlatformCredential,
     YouTubeChannelSnapshot, CreatorVideo, VideoMetricSnapshot,
     CreatorIntent, CreatorDNASnapshot, Session, LLMCacheEntry,
+    Project, ProjectBrief, CreativeObject, ActivityEvent,
 )
 
 
@@ -209,3 +210,89 @@ class LLMCacheRepo:
         )
     async def bust(self, cache_kind: str, entity_id: str):
         await self.db.llm_cache_v2.delete_many({"cache_kind": cache_kind, "entity_id": entity_id})
+
+
+# ---- M2: Projects ----
+class ProjectRepo:
+    def __init__(self, db): self.db = db
+
+    async def create(self, project: Project) -> Project:
+        await self.db.projects.insert_one(project.model_dump())
+        return project
+
+    async def get(self, project_id: str) -> Optional[Project]:
+        doc = await self.db.projects.find_one({"id": project_id}, {"_id": 0})
+        return Project(**doc) if doc else None
+
+    async def get_owned(self, project_id: str, creator_id: str) -> Optional[Project]:
+        doc = await self.db.projects.find_one(
+            {"id": project_id, "creator_id": creator_id}, {"_id": 0}
+        )
+        return Project(**doc) if doc else None
+
+    async def list_for_creator(self, creator_id: str, include_discarded: bool = False) -> List[Project]:
+        q: dict = {"creator_id": creator_id}
+        if not include_discarded:
+            q["status"] = {"$ne": "discarded"}
+        cursor = self.db.projects.find(q, {"_id": 0}).sort("updated_at", -1)
+        return [Project(**d) async for d in cursor]
+
+    async def update(self, project_id: str, creator_id: str, patch: dict) -> Optional[Project]:
+        patch = {k: v for k, v in patch.items() if v is not None}
+        if not patch:
+            return await self.get_owned(project_id, creator_id)
+        patch["updated_at"] = _now()
+        r = await self.db.projects.update_one(
+            {"id": project_id, "creator_id": creator_id}, {"$set": patch}
+        )
+        if r.matched_count == 0:
+            return None
+        return await self.get_owned(project_id, creator_id)
+
+
+class CreativeObjectRepo:
+    def __init__(self, db): self.db = db
+
+    async def create(self, obj: CreativeObject) -> CreativeObject:
+        await self.db.creative_objects.insert_one(obj.model_dump())
+        return obj
+
+    async def get(self, obj_id: str) -> Optional[CreativeObject]:
+        doc = await self.db.creative_objects.find_one({"id": obj_id}, {"_id": 0})
+        return CreativeObject(**doc) if doc else None
+
+    async def list_for_project(self, project_id: str) -> List[CreativeObject]:
+        cursor = self.db.creative_objects.find({"project_id": project_id}, {"_id": 0}).sort("created_at", 1)
+        return [CreativeObject(**d) async for d in cursor]
+
+    async def update(self, obj_id: str, project_id: str, patch: dict) -> Optional[CreativeObject]:
+        patch = {k: v for k, v in patch.items() if v is not None}
+        if not patch:
+            return await self.get(obj_id)
+        patch["updated_at"] = _now()
+        r = await self.db.creative_objects.update_one(
+            {"id": obj_id, "project_id": project_id}, {"$set": patch}
+        )
+        if r.matched_count == 0:
+            return None
+        return await self.get(obj_id)
+
+    async def delete(self, obj_id: str, project_id: str) -> bool:
+        r = await self.db.creative_objects.delete_one({"id": obj_id, "project_id": project_id})
+        return r.deleted_count > 0
+
+
+class ActivityEventRepo:
+    def __init__(self, db): self.db = db
+
+    async def add(self, project_id: str, creator_id: str, event_type: str, metadata: Optional[dict] = None) -> ActivityEvent:
+        ev = ActivityEvent(
+            project_id=project_id, creator_id=creator_id,
+            event_type=event_type, metadata=metadata or {},
+        )
+        await self.db.activity_events.insert_one(ev.model_dump())
+        return ev
+
+    async def list_for_project(self, project_id: str, limit: int = 100) -> List[ActivityEvent]:
+        cursor = self.db.activity_events.find({"project_id": project_id}, {"_id": 0}).sort("created_at", -1).limit(limit)
+        return [ActivityEvent(**d) async for d in cursor]

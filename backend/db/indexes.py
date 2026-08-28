@@ -67,4 +67,13 @@ async def ensure_indexes(db):
     # OAuth states (short-lived) — TTL 10 minutes
     await db.oauth_states.create_index("created_at_ts", expireAfterSeconds=600)
 
+    # M2: Projects, CreativeObjects, ActivityEvents
+    await db.projects.create_index("id", unique=True)
+    await db.projects.create_index([("creator_id", 1), ("updated_at", -1)])
+    await db.projects.create_index([("creator_id", 1), ("status", 1)])
+    await db.creative_objects.create_index("id", unique=True)
+    await db.creative_objects.create_index([("project_id", 1), ("created_at", 1)])
+    await db.activity_events.create_index("id", unique=True)
+    await db.activity_events.create_index([("project_id", 1), ("created_at", -1)])
+
     log.info("indexes_ensured")
