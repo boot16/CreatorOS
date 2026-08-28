@@ -167,7 +167,11 @@ class CreatorIntent(BaseModel):
 class DNAStatus(str, Enum):
     not_computed = "not_computed"
     insufficient_data = "insufficient_data"
+    provisional = "provisional"
+    computed = "computed"
     computing = "computing"
+    failed = "failed"
+    # Kept so existing Phase 1 documents remain readable.
     ready = "ready"
     error = "error"
 
@@ -191,8 +195,42 @@ class CreatorDNASnapshot(BaseModel):
     performance_dna: Optional[dict] = None
     evolution_dna: Optional[dict] = None
     source_snapshot_ids: List[str] = Field(default_factory=list)
+    source_fingerprint: Optional[str] = None
+    analysis_window: str = "ALL_AVAILABLE"
+    video_count: int = 0
+    confidence: Optional[float] = None
+    earliest_video_at: Optional[str] = None
+    latest_video_at: Optional[str] = None
     computed_at: Optional[str] = None
     pipeline_version: Optional[str] = None
+    prompt_version: Optional[str] = None
+    model_versions: List[str] = Field(default_factory=list)
+    computation_metadata: dict = Field(default_factory=dict)
+    created_at: str = Field(default_factory=_now)
+
+
+class VideoContentAnalysis(BaseModel):
+    """Reusable, source-hash-versioned understanding of one canonical video."""
+    id: str = Field(default_factory=_uid)
+    creator_id: str
+    creator_video_id: str
+    topic: str
+    original_topic: Optional[str] = None
+    subtopics: List[str] = Field(default_factory=list)
+    format: str
+    format_secondary: Optional[str] = None
+    hook_type: str = "other"
+    tone: str = "other"
+    storytelling_structure: str = "other"
+    presentation_style: str = "other"
+    audience_intent: Optional[str] = None
+    content_promise: Optional[str] = None
+    entities: List[str] = Field(default_factory=list)
+    inference_confidence: float = 0.0
+    model: str
+    prompt_version: str
+    pipeline_version: str
+    source_content_hash: str
     created_at: str = Field(default_factory=_now)
 
 

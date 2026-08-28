@@ -11,6 +11,7 @@ class CurrentCreatorContext(BaseModel):
     creator: Optional[dict] = None
     workspace: Optional[dict] = None
     youtube_connected: bool = False
+    youtube_last_synced_at: Optional[str] = None
     dna_status: str = "not_computed"
 
 
@@ -60,6 +61,29 @@ class CreatorDNAStatusResponse(BaseModel):
     status: str
     version: int = 0
     computed_at: Optional[str] = None
+
+
+class CreatorDNAResponse(CreatorDNAStatusResponse):
+    analysis_window: Optional[str] = None
+    video_count: int = 0
+    confidence: Optional[float] = None
+    earliest_video_at: Optional[str] = None
+    latest_video_at: Optional[str] = None
+    pipeline_version: Optional[str] = None
+    prompt_version: Optional[str] = None
+    topic_dna: Optional[dict] = None
+    format_dna: Optional[dict] = None
+    creative_dna: Optional[dict] = None
+    audience_dna: Optional[dict] = None
+    performance_dna: Optional[dict] = None
+    evolution_dna: Optional[dict] = None
+    computation_metadata: dict = Field(default_factory=dict)
+
+
+class DNAComputeResponse(BaseModel):
+    status: str
+    accepted: bool
+    message: str
 
 
 # ---- Structured LLM output schemas ----

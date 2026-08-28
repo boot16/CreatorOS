@@ -6,8 +6,6 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
-import json
-import re
 import uuid
 from pathlib import Path
 from pydantic import BaseModel
@@ -24,7 +22,7 @@ from core.identity import SESSION_COOKIE, resolve_identity, require_real_auth, r
 from core.rate_limit import get_rate_limiter, BUDGETS
 from db.indexes import ensure_indexes
 from providers import make_creator_provider, make_trend_provider, make_opportunity_provider
-from services.llm import CachedLLMService, call_structured, call_text
+from services.llm import CachedLLMService, call_structured, call_text, stream_text, parse_json_object
 from api.schemas import IdeaLabOutput, OppBulletsOutput, TrendExplanationOutput
 from api.v1 import build_v1_router
 from repositories import CreatorRepo
@@ -441,16 +439,16 @@ async def assistant_chat(req: AssistantRequest,
     })
 
     async def gen():
-        from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
-        chat = LlmChat(api_key=settings.EMERGENT_LLM_KEY, session_id=f"studio-{req.session_id}",
-                       system_message=system_msg).with_model("anthropic", "claude-sonnet-4-6")
         collected = ""
-        async for ev in chat.stream_message(UserMessage(text=user_prompt)):
-            if isinstance(ev, TextDelta):
-                collected += ev.content
-                yield ev.content
-            elif isinstance(ev, StreamDone):
-                break
+        try:
+            async for chunk in stream_text(system_msg, user_prompt, session_id=f"studio-{req.session_id}"):
+                collected += chunk
+                yield chunk
+        except AppError:
+            # HTTP streaming has already begun, so preserve the plain-text contract with a safe final message.
+            safe = "\n\n[CreatorOS could not complete this response. Please try again.]"
+            collected += safe
+            yield safe
         await db.assistant_history.insert_one({
             "session_id": req.session_id, "role": "assistant", "content": collected,
             "created_at": datetime.now(timezone.utc).isoformat(),
@@ -481,7 +479,7 @@ app.include_router(build_features_router(db, {
         is_authenticated=False, is_demo=settings.is_demo,
     )),
     "call_llm": call_text,
-    "extract_json": lambda text: __import__("json").loads(re.search(r"\{[\s\S]*\}", text).group(0)) if re.search(r"\{[\s\S]*\}", text) else (_ for _ in ()).throw(ValueError("No JSON")),
+    "extract_json": parse_json_object,
     "WEIGHTS_OPP": WEIGHTS_OPP,
     "OPPORTUNITIES": OPPORTUNITIES,
     "TRENDS": TRENDS,

@@ -2,7 +2,9 @@
 import os, sys, asyncio, uuid
 os.environ.setdefault('MONGO_URL', 'mongodb://localhost:27017')
 os.environ.setdefault('DB_NAME', 'test_database_phase1')
-os.environ.setdefault('EMERGENT_LLM_KEY', 'x')
+os.environ.setdefault('ANTHROPIC_API_KEY', 'test-key')
+os.environ.setdefault('LLM_PROVIDER', 'anthropic')
+os.environ.setdefault('LLM_MODEL', 'claude-sonnet-4-6')
 os.environ.setdefault('APP_ENCRYPTION_KEY', 'Ah8FVpGr9tYq6cV2s7bH3nD1kX0mLpQeR4uJ_wZcYvA=')
 
 sys.path.insert(0, '/app/backend')

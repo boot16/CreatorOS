@@ -133,7 +133,8 @@ Created idempotently on startup by `db.indexes.ensure_indexes(db)`:
 ```
 MONGO_URL, DB_NAME              — Mongo connection
 DATA_MODE=demo|production       — Data source selection
-EMERGENT_LLM_KEY                — LLM (Claude via emergentintegrations)
+ANTHROPIC_API_KEY                — Claude API key (official Anthropic SDK)
+LLM_PROVIDER=anthropic, LLM_MODEL — Provider and configured Claude model
 APP_ENCRYPTION_KEY              — Fernet key for platform credentials (production)
 CORS_ORIGINS                    — Comma-separated whitelist (no '*' in production)
 GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, OAUTH_REDIRECT_URI  — YouTube OAuth

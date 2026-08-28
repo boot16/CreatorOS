@@ -14,6 +14,8 @@ export default function DNADashboard() {
   const [shareOpen, setShareOpen] = useState(false);
   const [me, setMe] = useState(null);
   const [syncing, setSyncing] = useState(false);
+  const [computing, setComputing] = useState(false);
+  const [dna, setDna] = useState(null);
 
   useEffect(() => {
     if (boot.loading) return;
@@ -22,6 +24,7 @@ export default function DNADashboard() {
       setC({ ...boot.creator, historical_videos: boot.creator.historical_videos || [] });
       setIsReal(true);
       setMe(boot.user);
+      api.get('/v1/dna').then(r => setDna(r.data)).catch(() => setDna(null));
       return;
     }
     // Demo path: fetch Alex
@@ -32,6 +35,15 @@ export default function DNADashboard() {
       toast.success('YouTube connected — pulling your channel now.');
     }
   }, [boot.loading, boot.is_authenticated, boot.is_demo, boot.creator, boot.user]);
+
+  useEffect(() => {
+    if (!boot.is_authenticated || dna?.status !== 'computing') return undefined;
+    const timer = window.setInterval(() => api.get('/v1/dna').then(r => {
+      setDna(r.data);
+      if (r.data.status !== 'computing') boot.reload();
+    }).catch(() => {}), 4000);
+    return () => window.clearInterval(timer);
+  }, [boot.is_authenticated, dna?.status, boot.reload]);
 
   const syncYouTube = async () => {
     setSyncing(true);
@@ -44,6 +56,20 @@ export default function DNADashboard() {
       toast.error(msg);
     }
     setSyncing(false);
+  };
+
+  const computeDNA = async () => {
+    setComputing(true);
+    try {
+      const r = await api.post('/v1/dna/compute');
+      if (r.data.accepted) setDna({ status: r.data.status });
+      else setDna((await api.get('/v1/dna')).data);
+      toast.success(r.data.accepted ? 'Analysis started. This page will update when it is ready.' : 'Your current source data is already analyzed.');
+      boot.reload();
+    } catch (e) {
+      toast.error(e?.response?.data?.error?.message || 'Could not start analysis');
+    }
+    setComputing(false);
   };
 
   const dnaCreatorId = isReal ? 'me' : DEMO_CREATOR_ID;
@@ -71,7 +97,7 @@ export default function DNADashboard() {
   }
 
   // Production + authenticated + connected, DNA not computed yet
-  if (boot.is_authenticated && boot.youtube_connected && boot.dna_status === 'not_computed') {
+  if (boot.is_authenticated && boot.youtube_connected && !boot.youtube_last_synced_at) {
     return (
       <div className="max-w-lg mx-auto text-center py-20" data-testid="dna-not-computed-state">
         <div className="chip chip-accent mb-4">Almost there</div>
@@ -84,6 +110,33 @@ export default function DNADashboard() {
       </div>
     );
   }
+
+  if (boot.is_authenticated && boot.youtube_connected && (dna?.status === 'not_computed' || (!dna && boot.dna_status === 'not_computed'))) {
+    return (
+      <div className="max-w-lg mx-auto text-center py-20" data-testid="dna-not-computed-state">
+        <div className="chip chip-accent mb-4">Ready to analyze</div>
+        <h1 className="font-display text-3xl font-semibold">Build your Creator DNA.</h1>
+        <p className="mt-3 text-zinc-400">CreatorOS will classify your synced videos once, then calculate evidence-backed patterns from them.</p>
+        <button onClick={computeDNA} disabled={computing} data-testid="dna-compute-cta" className="btn-primary inline-flex items-center gap-2 mt-8 disabled:opacity-50">
+          <Sparkles size={14} /> {computing ? 'Starting…' : 'Analyze videos'}
+        </button>
+      </div>
+    );
+  }
+
+  if (boot.is_authenticated && dna?.status === 'computing') {
+    return <div className="max-w-lg mx-auto text-center py-20" data-testid="dna-computing-state"><div className="chip chip-accent mb-4">Analyzing</div><h1 className="font-display text-3xl font-semibold">Building your Creator DNA…</h1><p className="mt-3 text-zinc-400">Video analysis runs in the background. This page refreshes automatically.</p></div>;
+  }
+
+  if (boot.is_authenticated && dna?.status === 'insufficient_data') {
+    return <div className="max-w-lg mx-auto text-center py-20" data-testid="dna-insufficient-state"><div className="chip mb-4">Insufficient data</div><h1 className="font-display text-3xl font-semibold">More usable videos are needed.</h1><p className="mt-3 text-zinc-400">CreatorOS requires at least five synced videos with available metrics before it makes a provisional DNA.</p></div>;
+  }
+
+  if (boot.is_authenticated && dna?.status === 'failed') {
+    return <div className="max-w-lg mx-auto text-center py-20"><h1 className="font-display text-3xl font-semibold">Analysis could not finish.</h1><button onClick={computeDNA} className="btn-primary mt-6">Retry analysis</button></div>;
+  }
+
+  if (boot.is_authenticated && dna && ['provisional', 'computed'].includes(dna.status)) return <RealDNADashboard dna={dna} creator={c} onRecompute={computeDNA} />;
 
   if (!c) return <div className="text-zinc-400">Loading DNA…</div>;
 
@@ -216,4 +269,38 @@ export default function DNADashboard() {
       </Dialog>
     </motion.div>
   );
+}
+
+function EvidenceList({ item }) {
+  const evidence = item?.evidence || [];
+  if (!evidence.length) return null;
+  return <details className="mt-2 text-xs text-zinc-500"><summary className="cursor-pointer text-violet-300">Why?</summary><div className="mt-2">Based on {evidence.length} linked video{evidence.length === 1 ? '' : 's'} ({item.classification || 'CALCULATED'}).</div></details>;
+}
+
+function Distribution({ items = [], performance = false }) {
+  if (!items.length) return <p className="text-sm text-zinc-500">Unavailable from current source data.</p>;
+  return <div className="space-y-3">{items.slice(0, 5).map(item => <div key={item.label || item.value} className="rounded-lg bg-white/[0.02] p-3">
+    <div className="flex justify-between gap-3 text-sm"><span className="text-zinc-200 capitalize">{String(item.label || item.value).replaceAll('_', ' ')}</span><span className="font-mono text-zinc-400">{performance ? `${item.relative_performance}×` : `${Math.round((item.share || 0) * 100)}%`}</span></div>
+    <div className="mt-1 text-[10px] uppercase tracking-widest text-zinc-500">{item.sample_size || item.evidence?.length || 0} videos · {Math.round((item.confidence || 0) * 100)}% confidence</div><EvidenceList item={item} />
+  </div>)}</div>;
+}
+
+function RealDNADashboard({ dna, creator, onRecompute }) {
+  const displayName = creator?.display_name || creator?.name || 'Your channel';
+  const topics = dna.topic_dna?.core_topics || [];
+  const formats = dna.format_dna?.format_distribution || [];
+  const creative = dna.creative_dna || {};
+  const evolution = dna.evolution_dna || {};
+  const baseline = dna.performance_dna?.baseline;
+  return <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} data-testid="real-dna-dashboard">
+    <div className="mb-8 flex items-start justify-between gap-4"><div><div className="text-xs uppercase tracking-widest text-violet-300">Creator DNA</div><h1 className="font-display text-3xl md:text-4xl font-semibold">{displayName}</h1><div className="mt-2 text-sm text-zinc-400">Last analyzed: {dna.computed_at ? new Date(dna.computed_at).toLocaleString() : '—'} · Based on {dna.video_count} videos · {Math.round((dna.confidence || 0) * 100)}% confidence · <span className="capitalize">{dna.status}</span></div></div><button onClick={onRecompute} className="btn-ghost text-sm">Reanalyze</button></div>
+    <div className="grid lg:grid-cols-2 gap-4">
+      <section className="card-surface p-6"><h2 className="font-display uppercase tracking-widest mb-4">Topic DNA</h2><Distribution items={topics} /></section>
+      <section className="card-surface p-6"><h2 className="font-display uppercase tracking-widest mb-4">Format DNA</h2><Distribution items={formats} /><h3 className="mt-5 text-xs uppercase tracking-widest text-zinc-500">High-performing formats</h3><div className="mt-2"><Distribution items={dna.format_dna?.high_performing_formats || []} performance /></div></section>
+      <section className="card-surface p-6"><h2 className="font-display uppercase tracking-widest mb-4">Creative DNA</h2>{['hook_type', 'tone', 'storytelling_structure', 'presentation_style'].map(key => <div key={key} className="mb-4"><h3 className="text-xs uppercase tracking-widest text-zinc-500 mb-2">{key.replaceAll('_', ' ')}</h3><Distribution items={creative[key] || []} /></div>)}</section>
+      <section className="card-surface p-6"><h2 className="font-display uppercase tracking-widest mb-4">Audience DNA</h2><Distribution items={dna.audience_dna?.likely_content_intents || []} /><p className="mt-4 text-xs text-zinc-500">{dna.audience_dna?.limitations}</p></section>
+      <section className="card-surface p-6"><h2 className="font-display uppercase tracking-widest mb-4">Performance DNA</h2>{baseline && <p className="text-sm text-zinc-300">Current median views: <span className="font-mono">{Math.round(baseline.value).toLocaleString()}</span> across {baseline.sample_size} videos.</p>}<h3 className="mt-5 text-xs uppercase tracking-widest text-zinc-500">Winning combinations</h3><div className="mt-2"><Distribution items={dna.performance_dna?.winning_combinations || []} performance /></div><p className="mt-3 text-xs text-zinc-500">These are historical correlations, not claims of causation.</p></section>
+      <section className="card-surface p-6"><h2 className="font-display uppercase tracking-widest mb-4">Evolution</h2><p className="text-xs text-zinc-500 mb-3">{evolution.method}</p>{[['Core identity', evolution.core_identity], ['Current identity', evolution.current_identity], ['Emerging identity', evolution.emerging_identity]].map(([label, group]) => <div key={label} className="mb-4"><h3 className="text-xs uppercase tracking-widest text-zinc-500">{label}</h3><p className="mt-1 text-sm text-zinc-200">{(group?.topics || []).map(x => x.value).join(', ') || 'Unavailable'}</p></div>)}</section>
+    </div>
+  </motion.div>;
 }

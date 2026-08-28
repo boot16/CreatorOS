@@ -44,6 +44,19 @@ async def ensure_indexes(db):
     # Intent + DNA
     await db.creator_intent.create_index("creator_id", unique=True)
     await db.creator_dna_snapshots.create_index([("creator_id", 1), ("computed_at", -1)])
+    await db.creator_dna_snapshots.create_index(
+        [("creator_id", 1), ("pipeline_version", 1), ("prompt_version", 1), ("computed_at", -1)]
+    )
+    await db.creator_dna_snapshots.create_index(
+        [("creator_id", 1), ("source_fingerprint", 1), ("pipeline_version", 1), ("prompt_version", 1)]
+    )
+    # Per-video analyses are append-only for auditability; compatibility is queried by this key.
+    await db.video_content_analyses.create_index(
+        [("creator_video_id", 1), ("source_content_hash", 1), ("pipeline_version", 1),
+         ("prompt_version", 1), ("model", 1)], unique=True
+    )
+    await db.video_content_analyses.create_index([("creator_id", 1), ("creator_video_id", 1)])
+    await db.video_content_analyses.create_index("created_at")
 
     # LLM cache v2
     await db.llm_cache_v2.create_index("key_hash", unique=True)

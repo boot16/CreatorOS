@@ -79,15 +79,16 @@ class YouTubeSyncService:
                             connected_platform_id=cp.id,
                             external_video_id=v["id"],
                             title=v["snippet"]["title"],
-                            description=v["snippet"].get("description", "")[:500],
+                            description=v["snippet"].get("description", "")[:5000],
                             thumbnail_url=v["snippet"]["thumbnails"].get("medium", {}).get("url", ""),
                             published_at=v["snippet"]["publishedAt"],
+                            duration_seconds=self._parse_duration(v.get("contentDetails", {}).get("duration")),
                         )
-                        _, was_created = await self.source_repo.upsert_video(cv)
+                        persisted_video, was_created = await self.source_repo.upsert_video(cv)
                         if was_created: created += 1
                         else: updated += 1
                         metric = VideoMetricSnapshot(
-                            creator_video_id=cv.id,
+                            creator_video_id=persisted_video.id,
                             views=int(v["statistics"].get("viewCount", 0)),
                             likes=int(v["statistics"].get("likeCount", 0)),
                             comments=int(v["statistics"].get("commentCount", 0)),
@@ -120,5 +121,17 @@ class YouTubeSyncService:
         return r.json().get("items", []) if r.status_code == 200 else []
 
     async def _fetch_videos(self, client, headers, video_ids):
-        r = await client.get(YT_VIDEOS, params={"part": "snippet,statistics", "id": ",".join(video_ids)}, headers=headers)
+        r = await client.get(YT_VIDEOS, params={"part": "snippet,statistics,contentDetails", "id": ",".join(video_ids)}, headers=headers)
         return r.json().get("items", []) if r.status_code == 200 else []
+
+    @staticmethod
+    def _parse_duration(value: Optional[str]) -> Optional[int]:
+        """Minimal ISO-8601 YouTube duration parser; invalid/missing data stays unavailable."""
+        if not value:
+            return None
+        import re
+        match = re.fullmatch(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", value)
+        if not match:
+            return None
+        hours, minutes, seconds = (int(part or 0) for part in match.groups())
+        return hours * 3600 + minutes * 60 + seconds

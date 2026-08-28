@@ -11,7 +11,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from models.domain import (
     User, Workspace, WorkspaceMember, Creator, ConnectedPlatform, PlatformCredential,
     YouTubeChannelSnapshot, CreatorVideo, VideoMetricSnapshot,
-    CreatorIntent, CreatorDNASnapshot, Session, LLMCacheEntry,
+    CreatorIntent, CreatorDNASnapshot, VideoContentAnalysis, Session, LLMCacheEntry,
 )
 
 
@@ -138,9 +138,22 @@ class YouTubeSourceRepo:
         return video, True
     async def add_metric_snapshot(self, snap: VideoMetricSnapshot):
         await self.db.video_metric_snapshots.insert_one(snap.model_dump())
-    async def list_videos(self, creator_id: str, limit: int = 20) -> List[CreatorVideo]:
-        cursor = self.db.creator_videos.find({"creator_id": creator_id}, {"_id": 0}).sort("published_at", -1).limit(limit)
+    async def list_videos(self, creator_id: str, limit: Optional[int] = None) -> List[CreatorVideo]:
+        cursor = self.db.creator_videos.find({"creator_id": creator_id}, {"_id": 0}).sort("published_at", -1)
+        if limit:
+            cursor = cursor.limit(limit)
         return [CreatorVideo(**d) async for d in cursor]
+    async def latest_metrics(self, creator_video_ids: List[str]) -> dict[str, VideoMetricSnapshot]:
+        if not creator_video_ids:
+            return {}
+        cursor = self.db.video_metric_snapshots.find(
+            {"creator_video_id": {"$in": creator_video_ids}}, {"_id": 0}
+        ).sort("captured_at", -1)
+        result = {}
+        async for doc in cursor:
+            metric = VideoMetricSnapshot(**doc)
+            result.setdefault(metric.creator_video_id, metric)
+        return result
 
 
 class IntentRepo:
@@ -164,7 +177,7 @@ class DNARepo:
     def __init__(self, db): self.db = db
     async def latest(self, creator_id: str) -> Optional[CreatorDNASnapshot]:
         doc = await self.db.creator_dna_snapshots.find_one(
-            {"creator_id": creator_id}, {"_id": 0}, sort=[("computed_at", -1)]
+            {"creator_id": creator_id}, {"_id": 0}, sort=[("created_at", -1)]
         )
         return CreatorDNASnapshot(**doc) if doc else None
     async def get_or_create_placeholder(self, creator_id: str) -> CreatorDNASnapshot:
@@ -174,6 +187,35 @@ class DNARepo:
         snap = CreatorDNASnapshot(creator_id=creator_id)
         await self.db.creator_dna_snapshots.insert_one(snap.model_dump())
         return snap
+    async def create(self, snapshot: CreatorDNASnapshot) -> CreatorDNASnapshot:
+        await self.db.creator_dna_snapshots.insert_one(snapshot.model_dump())
+        return snapshot
+    async def equivalent(self, creator_id: str, source_fingerprint: str, pipeline_version: str,
+                         prompt_version: str, model_versions: List[str]) -> Optional[CreatorDNASnapshot]:
+        doc = await self.db.creator_dna_snapshots.find_one({
+            "creator_id": creator_id, "source_fingerprint": source_fingerprint,
+            "pipeline_version": pipeline_version, "prompt_version": prompt_version,
+            "model_versions": model_versions,
+            "status": {"$in": ["provisional", "computed"]},
+        }, {"_id": 0}, sort=[("computed_at", -1)])
+        return CreatorDNASnapshot(**doc) if doc else None
+    async def next_version(self, creator_id: str) -> int:
+        latest = await self.latest(creator_id)
+        return (latest.version + 1) if latest else 1
+
+
+class VideoAnalysisRepo:
+    def __init__(self, db): self.db = db
+    async def compatible(self, creator_video_id: str, source_content_hash: str, pipeline_version: str,
+                         prompt_version: str, model: str) -> Optional[VideoContentAnalysis]:
+        doc = await self.db.video_content_analyses.find_one({
+            "creator_video_id": creator_video_id, "source_content_hash": source_content_hash,
+            "pipeline_version": pipeline_version, "prompt_version": prompt_version, "model": model,
+        }, {"_id": 0}, sort=[("created_at", -1)])
+        return VideoContentAnalysis(**doc) if doc else None
+    async def create(self, analysis: VideoContentAnalysis) -> VideoContentAnalysis:
+        await self.db.video_content_analyses.insert_one(analysis.model_dump())
+        return analysis
 
 
 class SessionRepo:

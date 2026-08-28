@@ -16,6 +16,7 @@ let state = {
   creator: null,
   workspace: null,
   youtube_connected: false,
+  youtube_last_synced_at: null,
   dna_status: 'not_computed',
 };
 
@@ -48,7 +49,7 @@ export function useBootstrap() {
 export async function logout() {
   try { await api.post('/auth/logout'); } catch (e) { /* ignore */ }
   state = { ...state, is_authenticated: false, user: null, creator: null, workspace: null,
-             youtube_connected: false, dna_status: 'not_computed' };
+             youtube_connected: false, youtube_last_synced_at: null, dna_status: 'not_computed' };
   listeners.forEach(l => l());
   await load();
 }
