@@ -121,20 +121,24 @@ _DEFAULT_CRITIQUE = {
 # ------------- DB fixture -------------
 @pytest.fixture
 def cleandb():
+    """Return DB handle. Do NOT wipe collections — tests must isolate via unique IDs
+    to avoid racing with parallel HTTP smoke tests hitting the same live database."""
     client = MongoClient(os.environ["MONGO_URL"])
     d = client[os.environ["DB_NAME"]]
-    for c in ("projects", "creative_objects", "activity_events",
-              "project_sources", "project_chats"):
-        d[c].delete_many({})
     yield d
-    for c in ("projects", "creative_objects", "activity_events",
-              "project_sources", "project_chats"):
-        d[c].delete_many({})
     client.close()
 
 
 @pytest.fixture
 def client(inproc_client):
+    """Wrap the session-scoped client, clearing any lingering session cookies from
+    other tests so we always start in demo/anonymous identity. Also re-force DATA_MODE=demo
+    in case a prior async test monkeypatched it to 'production' and cleared settings cache."""
+    import os
+    inproc_client.cookies.clear()
+    os.environ["DATA_MODE"] = "demo"
+    from core.config import get_settings
+    get_settings.cache_clear()
     return inproc_client
 
 

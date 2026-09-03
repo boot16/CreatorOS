@@ -1,0 +1,30 @@
+{
+  "summary": "M3 Project-Aware AI validated end-to-end. Backend: 13/13 in-process tests pass (test_m3_project_ai.py, LLM mocked), 9/9 new HTTP-through-ingress tests pass (test_m3_http.py, LIVE Claude Sonnet 4.6 via emergentintegrations, ~5min). Covered: Sources CRUD (url/text/validation/list/delete), research singleton + status auto-advance idea->researching + activity 'research_generated', directions generation returns 2-4 items with all required fields (angle/audience_takeaway/format/tone/why_it_works) + PUT selected persists direction singleton + status developing, outline singleton + status writing, content NEVER overwrites (new object each call) + type mapping (youtube_video/instagram_reel->script, instagram_post->caption, instagram_carousel->carousel), edit rewrite/improve_hook return proposal WITHOUT mutating DB, critique returns strengths/weaknesses/suggestions, unknown action->400, chat persists user+assistant turns in order, ownership isolation on ALL 11 M3 endpoints returns 404 for foreign creator. Frontend E2E on live URL: created youtube project, brief topic saved, Research tab -> add text source visible in sources-list -> ran LIVE research question 'What is the strongest angle?', research-editor rendered ~30s. Direction tab -> generated 3 direction options, selected option-0, direction-selected rendered. Content tab -> ai-outline generated outline object, ai-content generated a script creative-object; second ai-content generated a SECOND script (never overwrote first) — confirmed 2 creative-object-<uuid> nodes. Edit action: ai-improve-hook-btn on first draft rendered proposal-<id> preview with explicit Accept/Discard — clicked Discard, original content untouched. Assistant sidebar: sent 'What is this project about?' — reply mentions the topic 'AI agents replacing human hires' AND objective 'Test M3' AND current status 'writing stage' (strong context awareness). Chat history persists across reload. All required data-testids present.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_m3_project_ai.py",
+    "/app/backend/tests/test_m3_http.py",
+    "/app/test_reports/pytest/pytest_iteration7_m3_http.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Singleton upsert for research/direction/outline is implemented correctly by scanning existing objects of that type in _upsert_singleton_creative_object; content generation explicitly creates a new CreativeObject each call — matches the 'never destroy creator work' contract.",
+    "Ownership check via _require_owned_project uses (project_id + creator_id) filter; returns 404 on foreign rows without leaking existence — verified on 11 endpoints.",
+    "AI failure paths (edit/research) do NOT touch prior CreativeObjects — verified by in-process fail injection. Chat failure persists user turn AND a visible '(assistant temporarily unavailable — ...)' assistant marker, then re-raises 502.",
+    "Rate limits present (project_ai_generate/project_ai_chat) — not stressed under this iteration since one user only.",
+    "ProjectAI.jsx is 905 lines; borderline against the 700-line guideline. Consider splitting ResearchTab / DirectionTab / ContentTab / ProjectAssistant into separate files for maintainability.",
+    "Proposal preview has explicit proposal-accept-{id} and proposal-discard-{id} — no silent overwrites in the UI. Confirmed by clicking Discard and re-reading DB content."
+  ],
+  "updated_files": ["/app/backend/tests/test_m3_http.py"],
+  "success_rate": {"backend": "100% (13/13 in-process + 9/9 HTTP live-LLM = 22/22)", "frontend": "100% of M3 flows tested end-to-end with live LLM"},
+  "test_credentials": "N/A — demo mode (creator_id=alex-morgan).",
+  "seed_data_creation": "Each backend test creates its own project via API; ownership isolation test inserts one foreign-creator project into mongo.projects and deletes it in finally. Frontend E2E created one 'M3 E2E YT' project.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend URL: https://opportunity-feed-6.preview.emergentagent.com. To rerun M3 HTTP suite (~5 min due to LIVE LLM): `cd /app/backend && python -m pytest tests/test_m3_http.py -v -o addopts='' --junitxml=/app/test_reports/pytest/pytest_m3_http.xml`. In-process (fast, LLM mocked): `python -m pytest tests/test_m3_project_ai.py -v`. All M3 data-testids from problem statement present and functional. Do NOT test M4 (analytics/publishing/YouTube-Instagram sync) — not built. Ship tab is placeholder-ship, intentional."
+}

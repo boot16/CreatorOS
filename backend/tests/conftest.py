@@ -34,6 +34,10 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture(scope="session")
 def inproc_client():
+    """Session-scoped in-process TestClient. Motor's AsyncIOMotorClient (created at
+    server.py import time) binds to the first event loop it sees, so we keep a single
+    loop alive for the duration of the run. Async tests in this suite use their own
+    dedicated Motor client fixtures and do NOT reuse this one."""
     from server import app
     with TestClient(app) as c:
         yield c

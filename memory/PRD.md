@@ -184,3 +184,48 @@ Scope: minimum-change stabilization only. NO new product features.
 - YouTube sync, Instagram, real authentication, demo experiences (Feed, Trends, Idea Lab, Studio, Scripts, Shortlist, Collab) untouched — reachable under `/app/feed` etc.
 
 **Next (M3):** Project-Aware AI — context builder, research/sources, direction/outline/script generation using existing LLM abstraction.
+
+---
+
+## M3 — Project-Aware AI (2026-09-03) ✅
+
+**Scope:** Turned the Brief → Research → Direction → Content workspace into an AI-assisted flow. Project Assistant chat lives in the sidebar. Content edits never destroy creator work.
+
+**Backend (added, no rewrites)**
+- `services/project_ai.py` (NEW, ~280 lines): `ProjectContext` builder (assembles project + brief + sources + research + direction + outline + creative objects, deterministic ordering, truncated to 12KB). 6 AI task functions: `run_research`, `run_directions`, `run_outline`, `run_content`, `run_edit`, `run_critique`, `run_assistant_reply`. Structured Pydantic schemas: `ResearchOutput`, `DirectionsOutput`, `OutlineOutput`, `CritiqueOutput`. Reuses existing `services/llm.py` (`call_structured` + `call_text`) with Claude Sonnet 4.6.
+- `models/domain.py`: extended `CreativeObjectType` with `research`, `direction`; added `ProjectSource` and `ProjectChatMessage`.
+- `repositories/__init__.py`: added `ProjectSourceRepo`, `ProjectChatRepo`.
+- `api/v1.py`: 11 new M3 routes — sources CRUD, `ai/research`, `ai/directions` + `ai/direction/selected`, `ai/outline`, `ai/content`, `ai/edit`, `ai/chat` GET/POST. All ownership-scoped by `creator_id`; foreign creator → 404 (no existence leak).
+- `api/schemas.py`: `ResearchRequest`, `SourceBody/Response`, `DirectionSelectBody`, `EditRequest`, `ChatRequest`, `ChatMessageResponse`.
+- `db/indexes.py`: indexes for `project_sources` and `project_chats`.
+- `core/rate_limit.py`: `project_ai_generate` (30/hr), `project_ai_chat` (60/hr) budgets.
+
+**Frontend (added, minimal churn)**
+- `pages/ProjectAI.jsx` (NEW): `ResearchTab` with sources panel + AI research + editable brief; `DirectionTab` with generate/pick/edit; `ContentTab` with AI outline + AI content + Rewrite/Improve Hook/Critique on each creative object (proposal preview with explicit Accept/Discard — no silent overwrite); `ProjectAssistant` chat panel.
+- `pages/ProjectWorkspace.jsx`: wires new tabs, replaced the sidebar Activity panel with an Activity | Assistant toggle. Ship tab remains a placeholder.
+
+**Contracts honored**
+- AI failure never destroys creator work. Edit/Critique never mutate DB — they return proposals. Content generation always creates a NEW CreativeObject (never overwrites existing scripts/captions/carousels). Research/Direction/Outline are singletons per project (update in place).
+- Status auto-advance is forward-only: idea→researching (research generated), →developing (direction selected), →writing (outline or content generated). Regressions are never applied.
+- No fabricated URLs. Research grounded in user-provided sources; explicit `open_questions` when sources are thin.
+- Chat context uses the ProjectContext builder — assistant answers about THIS project (verified: assistant response cited topic + objective + status).
+- Ownership 404s on every M3 endpoint. No cross-creator leakage.
+
+**Tests**
+- `tests/test_m3_project_ai.py` (NEW, 13 in-process tests, LLM mocked at `services/project_ai` imports).
+- Testing agent: 13/13 in-process + 9/9 HTTP-through-ingress (LIVE Claude Sonnet 4.6) = **22/22 backend**. Frontend E2E: 100% of M3 flows verified against the live URL with real LLM. Regression: full suite 96/96.
+
+**Shortcuts / deferred (intentional per Credit-Constrained Directive)**
+- No web crawler / RAG. Sources are user-provided (URL or pasted text). Research synthesizes only from those + brief.
+- No selection-based rewriting. Rewrite operates on the whole content with an instruction; Improve Hook returns the full updated content (hook improved). Critique returns feedback only. All three require explicit user Accept to replace content.
+- Assistant chat is request/response (non-streaming) — reuses `services/llm.py`, not a separate chat product.
+- Chat history stored per project (no cross-project sharing).
+- No structured provenance beyond `ProjectSource.url`.
+- `ProjectAI.jsx` is a single ~900-line file (borderline vs. the 700-line guideline). Deferred split for future refactor.
+
+**Not touched (per directive)**
+- Instagram/YouTube connections, publishing, analytics, DNA-01, Creator memory, Studio chat page, older demo experiences (Feed/Trends/IdeaLab/Scripts/Shortlist/Collab). Ship tab remains a placeholder.
+
+**Blockers for M4:** none identified.
+
+**Next (M4 — do NOT start):** Platform Intelligence — wire existing YouTube functionality to projects, add minimal Instagram adapter.
