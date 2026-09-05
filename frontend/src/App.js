@@ -1,8 +1,9 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from './components/ui/sonner';
 import './lib/client'; // side-effect: install X-Client-Id header
 import DemoBadge from './components/DemoBadge';
+import { useBootstrap } from './lib/bootstrap';
 
 import Landing from './pages/Landing';
 import Onboarding from './pages/Onboarding';
@@ -22,7 +23,15 @@ import Projects from './pages/Projects';
 import ProjectWorkspace from './pages/ProjectWorkspace';
 import Layout from './components/Layout';
 
-function AppShell({ children }) { return <Layout>{children}</Layout>; }
+function AppShell({ children }) {
+  const boot = useBootstrap();
+  const loc = useLocation();
+  // Real signed-in user with no DNA yet → force onboarding once before entering the app.
+  if (!boot.loading && boot.is_authenticated && !boot.onboarding_complete && loc.pathname !== '/onboarding') {
+    return <Navigate to="/onboarding" replace />;
+  }
+  return <Layout>{children}</Layout>;
+}
 
 export default function App() {
   return (

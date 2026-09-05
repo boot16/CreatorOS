@@ -1,9 +1,11 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowRight, Sparkles, Radar, Lightbulb, Users, TrendingUp } from 'lucide-react';
 import RadialScore from '../components/RadialScore';
 import Sparkline from '../components/Sparkline';
+import { API } from '../lib/api';
+import { useBootstrap } from '../lib/bootstrap';
 
 const benefits = [
   { icon: Sparkles, title: 'Your channel, decoded', text: 'CreatorOS reads your content DNA — pillars, formats, style — and shows you what really moves your audience.' },
@@ -13,6 +15,18 @@ const benefits = [
 ];
 
 export default function Landing() {
+  const boot = useBootstrap();
+  const nav = useNavigate();
+
+  // Signed-in users skip the landing page.
+  useEffect(() => {
+    if (!boot.loading && boot.is_authenticated) {
+      nav(boot.onboarding_complete ? '/app' : '/onboarding', { replace: true });
+    }
+  }, [boot.loading, boot.is_authenticated, boot.onboarding_complete, nav]);
+
+  const startGoogle = () => { window.location.href = `${API}/auth/google/login`; };
+
   return (
     <div className="relative min-h-screen overflow-hidden">
       {/* Ambient glow */}
@@ -24,7 +38,10 @@ export default function Landing() {
           <div className="w-7 h-7 rounded-lg" style={{ background: 'linear-gradient(135deg,#8A2BE2,#4C1D95)' }} />
           <span className="font-display text-lg font-semibold">CreatorOS</span>
         </div>
-        <Link to="/onboarding" data-testid="header-demo-link" className="btn-ghost text-sm">View Demo</Link>
+        <div className="flex items-center gap-2">
+          <button onClick={startGoogle} data-testid="header-signin-btn" className="btn-ghost text-sm">Sign in</button>
+          <Link to="/onboarding" data-testid="header-demo-link" className="btn-ghost text-sm">View Demo</Link>
+        </div>
       </header>
 
       <section className="max-w-7xl mx-auto px-6 pt-16 pb-24 relative z-10 grid lg:grid-cols-[1.05fr_1fr] gap-16 items-center">
@@ -40,13 +57,16 @@ export default function Landing() {
             Your channel's data, current trends, and a network of creators — turned into one clear next move.
           </p>
           <div className="mt-10 flex flex-wrap gap-3">
-            <Link to="/onboarding" data-testid="hero-primary-cta" className="btn-primary inline-flex items-center gap-2">
-              View Demo <ArrowRight size={16} />
+            <button onClick={startGoogle} data-testid="hero-signin-btn" className="btn-primary inline-flex items-center gap-2">
+              Continue with Google <ArrowRight size={16} />
+            </button>
+            <Link to="/onboarding" data-testid="hero-primary-cta" className="btn-ghost inline-flex items-center gap-2">
+              View Demo
             </Link>
             <a href="#how" className="btn-ghost">See how it works</a>
           </div>
           <div className="mt-10 flex items-center gap-6 text-xs text-zinc-500">
-            <div>No signup · No YouTube connection needed</div>
+            <div>No followers needed · Real workspace, real drafts, real DNA</div>
           </div>
         </div>
 

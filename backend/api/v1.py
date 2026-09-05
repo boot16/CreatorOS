@@ -14,6 +14,7 @@ from api.schemas import (
     ActivityEventResponse,
     ResearchRequest, SourceBody, SourceResponse, DirectionSelectBody,
     EditRequest, ChatRequest, ChatMessageResponse,
+    OnboardingBody, CreatorContextResponse,
     _CONTENT_TYPES, _STATUSES, _CREATIVE_TYPES,
 )
 from repositories import IntentRepo, DNARepo, PlatformRepo, CreatorRepo, ProjectRepo, CreativeObjectRepo, ActivityEventRepo, ProjectSourceRepo, ProjectChatRepo
@@ -23,6 +24,8 @@ from services.project_ai import (
     ProjectContext, run_research, run_directions, run_outline, run_content,
     run_edit, run_critique, run_assistant_reply,
 )
+from services.creator_context import load_creator_context
+from services.dna_generator import generate_initial_dna
 from providers import make_creator_provider
 
 
@@ -41,10 +44,15 @@ def build_v1_router(db):
 
         dna = None
         yt_connected = False
+        onboarding_complete = False
         if user.creator_id and user.is_authenticated:
             dna = await DNARepo(db).latest(user.creator_id)
             yt_platform = await PlatformRepo(db).get_for_creator(user.creator_id, "youtube")
             yt_connected = yt_platform is not None
+            onboarding_complete = dna is not None and dna.status.value == "ready"
+        elif user.is_demo:
+            # Demo user is always "onboarded" — seeded Alex DNA
+            onboarding_complete = True
         dna_status = dna.status.value if dna else "not_computed"
 
         return CurrentCreatorContext(
@@ -57,7 +65,45 @@ def build_v1_router(db):
             workspace=({"id": user.workspace_id} if user.workspace_id else None),
             youtube_connected=yt_connected,
             dna_status=dna_status,
+            onboarding_complete=onboarding_complete,
         )
+
+    @router.get("/creator-context", response_model=CreatorContextResponse)
+    async def creator_context(user: CurrentUser = Depends(_user_dep)):
+        """Central creator context — creator profile + DNA + intent + platforms.
+        AI features consume this so every surface speaks about the same creator."""
+        ctx = await load_creator_context(db, user)
+        return CreatorContextResponse(**ctx.to_dict())
+
+    @router.post("/onboarding", response_model=CreatorContextResponse)
+    async def onboarding(body: OnboardingBody, user: CurrentUser = Depends(_user_dep)):
+        """First-run creator onboarding. Requires REAL auth (demo user is auto-onboarded).
+        Generates initial CreatorDNA and returns the fresh creator context."""
+        require_real_auth(user)
+        creator_id = require_creator(user)
+        get_rate_limiter().check(f"onboarding-{user.user_id}", 10, 3600)
+        # Also persist a lightweight CreatorIntent
+        intent_patch = {
+            "primary_goal": (body.goals[0] if body.goals else None),
+            "secondary_goals": body.goals[1:] if len(body.goals) > 1 else [],
+            "desired_topics": body.topics,
+            "formats_to_explore": body.preferred_formats,
+            "target_audience": body.intended_audience,
+        }
+        await IntentRepo(db).upsert(creator_id, {k: v for k, v in intent_patch.items() if v})
+        await generate_initial_dna(
+            db, creator_id,
+            creator_types=body.creator_types,
+            onboarding_text=body.onboarding_text,
+            topics=body.topics,
+            intended_audience=body.intended_audience,
+            platforms=body.platforms,
+            preferred_formats=body.preferred_formats,
+            goals=body.goals,
+            connected_sources=body.connected_sources,
+        )
+        ctx = await load_creator_context(db, user)
+        return CreatorContextResponse(**ctx.to_dict())
 
     @router.get("/creator-intent", response_model=CreatorIntentResponse)
     async def get_intent(user: CurrentUser = Depends(_user_dep)):
@@ -320,8 +366,8 @@ def build_v1_router(db):
             lines.append("")
         return "\n".join(lines).strip()
 
-    async def _load_context(project: Project) -> ProjectContext:
-        return await ProjectContext.load(db, project)
+    async def _load_context(project: Project, user: CurrentUser) -> ProjectContext:
+        return await ProjectContext.load(db, project, user)
 
     def _bump_status_if(project: Project, current_allowed: set, new_status: str):
         """Only advance status forward from allowed early stages — never regress a creator who is already ahead."""
@@ -369,7 +415,7 @@ def build_v1_router(db):
         creator_id, _ = _require_authed(user)
         proj = await _require_owned_project(project_id, user)
         get_rate_limiter().check(f"proj-ai-{creator_id}", *BUDGETS["project_ai_generate"])
-        ctx = await _load_context(proj)
+        ctx = await _load_context(proj, user)
         try:
             result = await run_research(ctx, body.question)
         except AppError:
@@ -393,7 +439,7 @@ def build_v1_router(db):
         creator_id, _ = _require_authed(user)
         proj = await _require_owned_project(project_id, user)
         get_rate_limiter().check(f"proj-ai-{creator_id}", *BUDGETS["project_ai_generate"])
-        ctx = await _load_context(proj)
+        ctx = await _load_context(proj, user)
         result = await run_directions(ctx)
         return {"directions": [d.model_dump() for d in result.directions]}
 
@@ -417,7 +463,7 @@ def build_v1_router(db):
         creator_id, _ = _require_authed(user)
         proj = await _require_owned_project(project_id, user)
         get_rate_limiter().check(f"proj-ai-{creator_id}", *BUDGETS["project_ai_generate"])
-        ctx = await _load_context(proj)
+        ctx = await _load_context(proj, user)
         result = await run_outline(ctx)
         markdown = _format_outline_markdown(result)
         obj = await _upsert_singleton_creative_object(project_id, "outline", "Outline", markdown)
@@ -437,7 +483,7 @@ def build_v1_router(db):
         creator_id, _ = _require_authed(user)
         proj = await _require_owned_project(project_id, user)
         get_rate_limiter().check(f"proj-ai-{creator_id}", *BUDGETS["project_ai_generate"])
-        ctx = await _load_context(proj)
+        ctx = await _load_context(proj, user)
         text, out_type = await run_content(ctx)
         # Always create a NEW creative object — never overwrite existing script/caption/carousel silently
         new_obj = CreativeObject(
@@ -458,7 +504,7 @@ def build_v1_router(db):
         creator_id, _ = _require_authed(user)
         proj = await _require_owned_project(project_id, user)
         get_rate_limiter().check(f"proj-ai-{creator_id}", *BUDGETS["project_ai_generate"])
-        ctx = await _load_context(proj)
+        ctx = await _load_context(proj, user)
         if body.action == "critique":
             result = await run_critique(ctx, body.content)
             return {"action": "critique", "critique": result.model_dump()}
@@ -488,7 +534,7 @@ def build_v1_router(db):
         await ProjectChatRepo(db).add(user_msg)
         history_docs = await ProjectChatRepo(db).list_for_project(project_id)
         history = [{"role": m.role, "content": m.content} for m in history_docs]
-        ctx = await _load_context(proj)
+        ctx = await _load_context(proj, user)
         try:
             reply_text = await run_assistant_reply(ctx, history[:-1], body.message)
         except AppError as e:

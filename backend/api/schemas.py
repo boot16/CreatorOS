@@ -12,6 +12,7 @@ class CurrentCreatorContext(BaseModel):
     workspace: Optional[dict] = None
     youtube_connected: bool = False
     dna_status: str = "not_computed"
+    onboarding_complete: bool = False
 
 
 class WorkspaceResponse(BaseModel):
@@ -198,3 +199,25 @@ class ChatMessageResponse(BaseModel):
     role: str
     content: str
     created_at: str
+
+
+# ---- M4: Onboarding + Creator Context ----
+class OnboardingBody(BaseModel):
+    creator_types: List[str] = Field(default_factory=list, max_length=6)
+    onboarding_text: str = Field(default="", max_length=6000)
+    topics: List[str] = Field(default_factory=list, max_length=12)
+    intended_audience: Optional[str] = Field(default=None, max_length=500)
+    platforms: List[str] = Field(default_factory=list, max_length=6)
+    preferred_formats: List[str] = Field(default_factory=list, max_length=8)
+    goals: List[str] = Field(default_factory=list, max_length=8)
+    connected_sources: List[str] = Field(default_factory=list, max_length=5)
+
+
+class CreatorContextResponse(BaseModel):
+    creator: Optional[dict] = None
+    dna: Optional[dict] = None
+    intent: Optional[dict] = None
+    platforms: list = Field(default_factory=list)
+    is_demo: bool
+    has_creator: bool
+    has_dna: bool

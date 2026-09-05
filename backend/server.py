@@ -132,6 +132,9 @@ async def config():
 @api_router.get("/creators/{creator_id}")
 async def creator(creator_id: str, sid: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE)):
     user = await _identity(sid)
+    # Real authenticated users must not see Alex Morgan seeded creator data via demo route.
+    if user.is_authenticated and creator_id in ("alex-morgan", DEMO_CREATOR_ID):
+        raise AppError(Codes.NOT_FOUND, "Creator not found", status_code=404)
     prov = make_creator_provider(db)
     c = await prov.get_creator(creator_id, user)
     if not c:
@@ -142,6 +145,11 @@ async def creator(creator_id: str, sid: Optional[str] = Cookie(default=None, ali
 @api_router.get("/creators/{creator_id}/opportunities")
 async def creator_opps(creator_id: str, sid: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE)):
     user = await _identity(sid)
+    # Real authenticated users must not receive Alex's seeded opportunities in demo mode.
+    if user.is_authenticated:
+        return {"status": "not_computed",
+                "message": "Opportunity intelligence isn't available yet for your channel.",
+                "items": []}
     prov = make_opportunity_provider()
     result = await prov.list_for_creator(user)
     # legacy frontend expects a bare list for the demo path

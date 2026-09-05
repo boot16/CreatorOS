@@ -17,6 +17,7 @@ let state = {
   workspace: null,
   youtube_connected: false,
   dna_status: 'not_computed',
+  onboarding_complete: false,
 };
 
 const listeners = new Set();
@@ -48,7 +49,7 @@ export function useBootstrap() {
 export async function logout() {
   try { await api.post('/auth/logout'); } catch (e) { /* ignore */ }
   state = { ...state, is_authenticated: false, user: null, creator: null, workspace: null,
-             youtube_connected: false, dna_status: 'not_computed' };
+             youtube_connected: false, dna_status: 'not_computed', onboarding_complete: false };
   listeners.forEach(l => l());
   await load();
 }

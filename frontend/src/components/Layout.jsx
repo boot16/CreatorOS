@@ -1,7 +1,12 @@
-import React from 'react';
-import { Link, NavLink, useLocation } from 'react-router-dom';
-import { Sparkles, Radar, Lightbulb, Users, Bookmark, MessageSquare, FileText, LayoutGrid } from 'lucide-react';
+import React, { useState } from 'react';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Sparkles, Radar, Lightbulb, Users, Bookmark, MessageSquare, FileText, LayoutGrid, LogOut, User as UserIcon } from 'lucide-react';
 import { useShortlist } from '../lib/shortlist';
+import { useBootstrap, logout } from '../lib/bootstrap';
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSeparator, DropdownMenuLabel,
+} from './ui/dropdown-menu';
 
 const links = [
   { to: '/app', label: 'Projects', icon: LayoutGrid, end: true },
@@ -16,7 +21,19 @@ const links = [
 
 export default function Layout({ children }) {
   const loc = useLocation();
+  const nav = useNavigate();
   const { count } = useShortlist();
+  const boot = useBootstrap();
+  const displayName = boot.user?.name || boot.creator?.display_name || boot.creator?.name || 'Creator';
+  const displayEmail = boot.user?.email;
+  const initials = (displayName || '?').split(' ').map((s) => s[0]).slice(0, 2).join('').toUpperCase();
+  const modeLabel = boot.is_demo ? 'Demo' : (boot.is_authenticated ? 'Signed in' : '');
+
+  const doLogout = async () => {
+    await logout();
+    nav('/', { replace: true });
+  };
+
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-40 backdrop-blur-xl border-b border-white/10" style={{ background: 'rgba(10,10,15,0.72)' }}>
@@ -46,8 +63,36 @@ export default function Layout({ children }) {
             ))}
           </nav>
           <div className="flex items-center gap-3">
-            <span className="hidden md:inline text-xs text-zinc-500">Demo · Alex Morgan</span>
-            <div className="w-8 h-8 rounded-full" style={{ background: 'linear-gradient(135deg,#8A2BE2,#4C1D95)' }} />
+            <span className="hidden md:inline text-xs text-zinc-500" data-testid="user-mode-label">
+              {modeLabel}{modeLabel && ' · '}{displayName}
+            </span>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  data-testid="user-menu-trigger"
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold border border-white/10"
+                  style={{ background: 'linear-gradient(135deg,#8A2BE2,#4C1D95)' }}
+                >
+                  {initials}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="border-white/10" style={{ background: '#12121A' }}>
+                <DropdownMenuLabel>
+                  <div className="text-sm font-medium">{displayName}</div>
+                  {displayEmail && <div className="text-xs text-zinc-500">{displayEmail}</div>}
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {boot.is_authenticated ? (
+                  <DropdownMenuItem onClick={doLogout} data-testid="logout-btn">
+                    <LogOut size={14} className="mr-2" /> Log out
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem onClick={() => (window.location.href = '/')} data-testid="signin-btn">
+                    <UserIcon size={14} className="mr-2" /> Sign in
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>
@@ -55,7 +100,7 @@ export default function Layout({ children }) {
         {children}
       </main>
       <footer className="max-w-7xl mx-auto px-6 py-10 text-xs text-zinc-600">
-        CreatorOS · demo build · seeded data, live LLM
+        CreatorOS · {boot.is_demo ? 'demo build · seeded data' : 'your workspace'} · live LLM
       </footer>
     </div>
   );

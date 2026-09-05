@@ -40,6 +40,7 @@ class ProjectContext:
         outline_obj: Optional[CreativeObject],
         other_objects: List[CreativeObject],
         sources: List[ProjectSource],
+        creator_prompt: str = "",
     ):
         self.project = project
         self.research = research_obj
@@ -47,10 +48,13 @@ class ProjectContext:
         self.outline = outline_obj
         self.other_objects = other_objects
         self.sources = sources
+        self.creator_prompt = creator_prompt
 
     @classmethod
-    async def load(cls, db, project: Project) -> "ProjectContext":
-        """Load the full project context. Caller MUST have already verified ownership."""
+    async def load(cls, db, project: Project, user=None) -> "ProjectContext":
+        """Load the full project context. Caller MUST have already verified ownership.
+        When `user` is provided, the CreatorContext is included so AI features share
+        the same creator identity across the app."""
         co_repo = CreativeObjectRepo(db)
         src_repo = ProjectSourceRepo(db)
         objs = await co_repo.list_for_project(project.id)
@@ -60,13 +64,25 @@ class ProjectContext:
         special = {id(x) for x in (research, direction, outline) if x is not None}
         other = [o for o in objs if id(o) not in special]
         sources = await src_repo.list_for_project(project.id)
-        return cls(project, research, direction, outline, other, sources)
+        creator_prompt = ""
+        if user is not None:
+            try:
+                from services.creator_context import load_creator_context
+                cctx = await load_creator_context(db, user)
+                creator_prompt = cctx.render_for_prompt()
+            except Exception:
+                creator_prompt = ""
+        return cls(project, research, direction, outline, other, sources, creator_prompt=creator_prompt)
 
     def render(self, *, include_content_objects: bool = True) -> str:
         """Render into a compact structured prompt block. Deterministic ordering."""
+        parts = []
+        if self.creator_prompt:
+            parts.append(self.creator_prompt)
+            parts.append("")
         p = self.project
         b = p.brief.model_dump() if hasattr(p.brief, "model_dump") else dict(p.brief or {})
-        parts = ["## PROJECT", f"- id: {p.id}",
+        parts += ["## PROJECT", f"- id: {p.id}",
                  f"- title: {p.title}",
                  f"- content_type: {p.content_type.value if hasattr(p.content_type,'value') else p.content_type}",
                  f"- platform: {p.platform.value if hasattr(p.platform,'value') else p.platform}",

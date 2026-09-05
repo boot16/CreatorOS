@@ -1,0 +1,36 @@
+{
+  "summary": "M4 Real User Foundation validated end-to-end. Backend: 11/11 in-process tests pass (test_m4_realuser.py, LLM mocked) + 10/10 new HTTP-through-ingress tests pass (test_m4_http.py, real preview URL, one LIVE Claude onboarding call ~10s). Verified: demo /api/v1/me returns is_demo=true+is_authenticated=false+onboarding_complete=true+creator.id='alex-morgan'; demo /api/v1/creator-context returns has_creator=true+has_dna=true+is_demo=true; /api/v1/onboarding without cookie returns 401; real user (session inserted directly into Mongo) receives 404 on /api/creators/alex-morgan and {status:'not_computed',items:[]} on /api/creators/alex-morgan/opportunities (no Alex leak); demo path still returns Alex on those routes; full onboarding via LIVE LLM (creator_types youtuber+educator, CS student text) returns 200 with populated dna.creator_types, dna.topics, dna.audience, dna.voice.tone — subsequent /me returns dna_status='ready'+onboarding_complete=true and /creator-context returns has_dna=true; two-user isolation: user B receives 404 on user A's project and A's project not in B's list; project persists across logout+new-session for same user_id. Additionally verified via a targeted script: real user + LIVE onboarding + create project + POST /api/v1/projects/{id}/ai/chat produces an assistant reply naming 'YouTuber', 'educator', 'AI', 'tutorial', and 'CS student' — confirming ProjectContext injects CreatorContext into the AI prompt. Frontend E2E on live URL: landing shows all 4 CTA testids (hero-signin-btn, hero-primary-cta, header-signin-btn, header-demo-link); demo /app renders projects-dashboard with user-mode-label='Demo · Alex Morgan (demo)' and user-menu-trigger dropdown shows the demo identity + Sign in link; demo /app/feed renders Alex's opportunity list (5 cards, e.g. 'I Replaced My First Employee With an AI Agent'); with creatoros_sid cookie set to a seeded real user session, /onboarding renders onboarding-page — filled ct-youtuber, ct-educator, onboarding-text-input, plat-youtube, fmt-tutorial, clicked onboarding-submit — after ~40s LIVE LLM the app redirected to /app and header showed 'Signed in · User E2E' with a 'Your Creator DNA is ready.' toast; user-menu-trigger → logout-btn redirected to / and hero-signin-btn was again visible. No Alex data ever leaked to the real user session.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/app after real-user onboarding", "issues": ["Footer / bottom-left still shows 'DEMO DATA' pill even after real user has completed onboarding and mode-label reads 'Signed in · User E2E'. Minor labeling inconsistency — GET /api/v1/me for that session also returns data_mode='demo'. Consider flipping data_mode/DEMO pill to a 'live' or workspace label once onboarding_complete=true. Non-blocking."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_m4_realuser.py",
+    "/app/backend/tests/test_m4_http.py",
+    "/app/test_reports/pytest/pytest_iteration8_m4.xml",
+    "/app/test_reports/pytest/pytest_iteration8_m4_http.xml"
+  ],
+  "action_items": [
+    "OPTIONAL / non-blocking: /api/v1/me returns data_mode='demo' for a freshly-onboarded real user; the 'DEMO DATA' pill in the layout is driven by this. Once onboarding_complete=true and dna_status='ready', data_mode should probably be 'live' (or workspace slug). Currently the mode-label header already flips to 'Signed in · User E2E', so the pill is the only visible inconsistency."
+  ],
+  "critical_code_review_comments": [
+    "load_creator_context (services/creator_context.py) correctly scopes to the caller: demo → Alex, authenticated → creator by user.creator_id; never mixes. Verified by test_creator_context_scoped_to_caller and the AI-chat probe.",
+    "ProjectContext.load(db, project, user) injects CreatorContext.render_for_prompt into every AI prompt via self.creator_prompt. Real-user AI chat verified to reference DNA fields (creator_types + topics) from the onboarding text.",
+    "Leak guards on GET /api/creators/{id} and /api/creators/{id}/opportunities correctly return 404 / not_computed for authenticated real users while preserving Alex demo path.",
+    "Session flow tested: logout revokes session, new session for same user_id restores project visibility — proves data persistence is at user_id, not session level.",
+    "DNA snapshot readable path: services/creator_context reads status='ready' snapshots and reshapes creative_dna/topic_dna/audience_dna/format_dna into a flat dict — matches DNARepo output. Manual snapshot inserts that bypass this shape will NOT surface in prompts (test-setup only, not a product bug).",
+    "Onboarding requires real auth (401 on anon) via require_real_auth guard on POST /api/v1/onboarding — correct.",
+    "Landing.jsx exposes all 4 required data-testids; Onboarding.jsx exposes all form testids used by the E2E; Layout.jsx exposes user-mode-label / user-menu-trigger / logout-btn as required."
+  ],
+  "updated_files": ["/app/backend/tests/test_m4_http.py"],
+  "success_rate": {"backend": "100% (11/11 in-process + 10/10 HTTP through ingress + AI chat DNA-injection probe = 22/22)", "frontend": "100% of M4 flows (landing CTAs, demo /app, demo /app/feed, real-user onboarding via mocked SID with LIVE LLM, logout)"},
+  "test_credentials": "No real Google OAuth used. Real-user auth simulated by inserting docs directly into Mongo: users, workspaces, workspace_members, creators, sessions (sid='m4-e2e-test-sid' for the frontend E2E). Session doc shape: {sid,user_id,email,name,expires_at,created_at}. All seeded rows cleaned up after run.",
+  "seed_data_creation": "Ten backend tests seed m4http-<prefix>-user/-ws/-creator/-sessions and clean up in the module teardown. Frontend E2E seeded uid=m4http-e2e-user, cid=m4http-e2e-creator, sid=m4-e2e-test-sid — cleaned at end. AI-chat probe seeded and cleaned m4http-chat3-* rows.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend URL: https://opportunity-feed-6.preview.emergentagent.com. Rerun M4: `cd /app/backend && python -m pytest tests/test_m4_realuser.py tests/test_m4_http.py -v -o addopts=''`. The HTTP suite hits LIVE LLM once (onboarding rate limit 10/hr — space between runs). Real-user auth in tests is via inserted Mongo session cookies (no OAuth). Do NOT test M5 (analytics, real YouTube sync, collab) — not built. Only minor non-blocking cosmetic finding: 'DEMO DATA' pill + data_mode='demo' from /me still show for a real onboarded user; header user-mode-label is correct. All M4 acceptance criteria met."
+}

@@ -1,139 +1,264 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowRight, Youtube, Loader2, Info } from 'lucide-react';
-import { api, API } from '../lib/api';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { ArrowRight, Loader2, Sparkles, Youtube, Instagram, PencilLine, BookOpen, Music, Camera, Palette, Mic, Users, Rocket, Radio } from 'lucide-react';
+import { api } from '../lib/api';
+import { useBootstrap } from '../lib/bootstrap';
+import { Textarea } from '../components/ui/textarea';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
 
+const CREATOR_TYPES = [
+  { id: 'youtuber', label: 'YouTuber', icon: Youtube },
+  { id: 'instagram_creator', label: 'Instagram creator', icon: Instagram },
+  { id: 'writer', label: 'Writer', icon: PencilLine },
+  { id: 'educator', label: 'Educator', icon: BookOpen },
+  { id: 'musician', label: 'Musician', icon: Music },
+  { id: 'artist', label: 'Artist', icon: Palette },
+  { id: 'photographer', label: 'Photographer', icon: Camera },
+  { id: 'podcaster', label: 'Podcaster', icon: Mic },
+  { id: 'founder', label: 'Founder', icon: Rocket },
+  { id: 'streamer', label: 'Streamer', icon: Radio },
+  { id: 'community_builder', label: 'Community builder', icon: Users },
+];
+
+const PLATFORMS = ['youtube', 'instagram', 'tiktok', 'twitter', 'substack', 'linkedin', 'other'];
+const FORMATS = ['experiment', 'tutorial', 'story', 'listicle', 'interview', 'review', 'reaction', 'vlog'];
 const GOALS = [
-  { id: 'grow', label: 'Grow subscribers', desc: 'Reach new audience' },
-  { id: 'monetize', label: 'Monetize consistently', desc: 'Sponsorships & products' },
-  { id: 'collab', label: 'Find collaborators', desc: 'Grow through partnerships' },
-  { id: 'trends', label: 'Ride trends earlier', desc: 'Get to topics first' },
-  { id: 'workflow', label: 'Ship more consistently', desc: 'Ideas → published, faster' },
+  { id: 'grow', label: 'Grow audience' },
+  { id: 'monetize', label: 'Monetize' },
+  { id: 'educate', label: 'Educate' },
+  { id: 'community', label: 'Build community' },
+  { id: 'ship_more', label: 'Ship more consistently' },
 ];
 
 export default function Onboarding() {
   const nav = useNavigate();
-  const [picked, setPicked] = useState(new Set(['grow', 'trends']));
-  const [connecting, setConnecting] = useState(false);
-  const [setupOpen, setSetupOpen] = useState(false);
-  const [setup, setSetup] = useState(null);
+  const boot = useBootstrap();
+  const [types, setTypes] = useState(new Set());
+  const [text, setText] = useState('');
+  const [audience, setAudience] = useState('');
+  const [platforms, setPlatforms] = useState(new Set());
+  const [formats, setFormats] = useState(new Set());
+  const [goals, setGoals] = useState(new Set(['grow']));
+  const [sourceUrl, setSourceUrl] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  const toggle = (id) => {
-    const s = new Set(picked);
-    s.has(id) ? s.delete(id) : s.add(id);
-    setPicked(s);
-  };
-
-  const persistThenGo = async () => {
-    // Persist intent when logged in; ignore silently in demo mode
-    try {
-      await api.put('/v1/creator-intent', {
-        primary_goal: [...picked][0] || null,
-        secondary_goals: [...picked].slice(1),
-      });
-    } catch { /* not logged in — skipped */ }
-    nav('/dna-reveal');
-  };
-
-  const connectYouTube = async () => {
-    setConnecting(true);
-    try {
-      const { data } = await api.get('/auth/status');
-      if (!data.configured) {
-        setSetup(data.setup_guide);
-        setSetupOpen(true);
-      } else {
-        window.location.href = `${API}/auth/google/login`;
-      }
-    } catch {
-      toast.error('Could not check auth status.');
+  // If already onboarded (real user with DNA, or demo), skip.
+  useEffect(() => {
+    if (!boot.loading && boot.onboarding_complete) {
+      nav('/app', { replace: true });
     }
-    setConnecting(false);
+  }, [boot.loading, boot.onboarding_complete, nav]);
+
+  // Not signed in — bounce to landing
+  useEffect(() => {
+    if (!boot.loading && !boot.is_authenticated && !boot.is_demo) {
+      nav('/', { replace: true });
+    }
+  }, [boot.loading, boot.is_authenticated, boot.is_demo, nav]);
+
+  const toggle = (setter, value) => {
+    setter((prev) => {
+      const s = new Set(prev);
+      s.has(value) ? s.delete(value) : s.add(value);
+      return s;
+    });
   };
+
+  const submit = async () => {
+    if (types.size === 0) { toast('Pick at least one creator type.'); return; }
+    if (text.trim().length < 30) { toast('Tell us a bit more about what you create (30+ characters).'); return; }
+    setSubmitting(true);
+    try {
+      await api.post('/v1/onboarding', {
+        creator_types: [...types],
+        onboarding_text: text.trim(),
+        topics: [],
+        intended_audience: audience.trim() || null,
+        platforms: [...platforms],
+        preferred_formats: [...formats],
+        goals: [...goals],
+        connected_sources: sourceUrl.trim() ? [sourceUrl.trim()] : [],
+      });
+      await boot.reload();
+      toast('Your Creator DNA is ready.');
+      nav('/app', { replace: true });
+    } catch (err) {
+      toast(err?.response?.data?.error?.message || 'Onboarding failed. Try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (boot.loading) {
+    return <div className="min-h-screen flex items-center justify-center text-zinc-500"><Loader2 className="animate-spin" size={16} /></div>;
+  }
 
   return (
     <div className="min-h-screen">
-      <header className="max-w-7xl mx-auto px-6 py-6 flex items-center justify-between">
+      <header className="max-w-4xl mx-auto px-6 py-6 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2" data-testid="onboarding-home">
           <div className="w-7 h-7 rounded-lg" style={{ background: 'linear-gradient(135deg,#8A2BE2,#4C1D95)' }} />
           <span className="font-display text-lg font-semibold">CreatorOS</span>
         </Link>
-        <span className="text-xs text-zinc-500">Step 1 of 1</span>
+        <span className="text-xs text-zinc-500">First-run setup</span>
       </header>
 
-      <div className="max-w-3xl mx-auto px-6 py-16">
+      <div className="max-w-4xl mx-auto px-6 pb-24" data-testid="onboarding-page">
         <div className="chip chip-accent mb-6">Onboarding</div>
         <h1 className="font-display text-4xl md:text-5xl font-semibold tracking-tight leading-tight">
-          What are you optimizing for?
+          Tell CreatorOS about you.
         </h1>
-        <p className="mt-4 text-zinc-400">Pick what matters. This tunes the reasoning shown next to every recommendation.</p>
+        <p className="mt-4 text-zinc-400 max-w-2xl">
+          No followers needed. Just describe what you make (or want to make). We'll build your Creator DNA
+          and use it across every AI feature.
+        </p>
 
-        <div className="mt-10 grid sm:grid-cols-2 gap-3">
-          {GOALS.map(g => {
-            const active = picked.has(g.id);
-            return (
+        {/* Creator types */}
+        <section className="mt-12">
+          <Label className="text-xs uppercase tracking-widest text-zinc-400">What kind of creator are you?</Label>
+          <p className="text-xs text-zinc-500 mt-1 mb-4">Pick everything that fits — even if you're just starting.</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {CREATOR_TYPES.map((t) => {
+              const active = types.has(t.id);
+              const Icon = t.icon;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => toggle(setTypes, t.id)}
+                  data-testid={`ct-${t.id}`}
+                  className="text-left p-4 rounded-2xl border transition-colors"
+                  style={active
+                    ? { borderColor: 'rgba(138,43,226,0.6)', background: 'rgba(138,43,226,0.08)' }
+                    : { borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)' }}
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon size={16} className={active ? 'text-violet-300' : 'text-zinc-400'} />
+                    <span className="text-sm font-medium">{t.label}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Free text */}
+        <section className="mt-12">
+          <Label className="text-xs uppercase tracking-widest text-zinc-400">Tell us about yourself</Label>
+          <p className="text-xs text-zinc-500 mt-1 mb-3">
+            Who you are, what you make, and who it's for. This is the most important input.
+          </p>
+          <Textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="I'm a software engineering student interested in AI and startups. I want to make educational YouTube videos explaining complicated AI concepts simply, for other students and early-stage developers. I prefer practical experiments over news commentary."
+            rows={7}
+            maxLength={6000}
+            className="bg-black/20 border-white/10 font-mono text-sm leading-relaxed"
+            data-testid="onboarding-text-input"
+          />
+          <div className="text-xs text-zinc-500 mt-1">{text.length}/6000</div>
+        </section>
+
+        {/* Structured extras */}
+        <section className="mt-10 grid md:grid-cols-2 gap-6">
+          <div>
+            <Label className="text-xs uppercase tracking-widest text-zinc-400">Intended audience (optional)</Label>
+            <Input
+              value={audience}
+              onChange={(e) => setAudience(e.target.value)}
+              placeholder="e.g. college students learning AI"
+              maxLength={500}
+              className="mt-2 bg-black/20 border-white/10"
+              data-testid="onboarding-audience-input"
+            />
+          </div>
+          <div>
+            <Label className="text-xs uppercase tracking-widest text-zinc-400">Existing profile/channel URL (optional)</Label>
+            <Input
+              value={sourceUrl}
+              onChange={(e) => setSourceUrl(e.target.value)}
+              placeholder="https://youtube.com/@… or Instagram/etc."
+              maxLength={500}
+              className="mt-2 bg-black/20 border-white/10"
+              data-testid="onboarding-source-input"
+            />
+            <div className="text-xs text-zinc-500 mt-1">We won't crawl it — this is just noted in your DNA.</div>
+          </div>
+        </section>
+
+        <section className="mt-10">
+          <Label className="text-xs uppercase tracking-widest text-zinc-400">Platforms (optional)</Label>
+          <div className="flex flex-wrap gap-2 mt-3">
+            {PLATFORMS.map((p) => (
+              <button
+                key={p}
+                onClick={() => toggle(setPlatforms, p)}
+                data-testid={`plat-${p}`}
+                className="px-3 py-1.5 rounded-full text-xs font-medium border transition-colors"
+                style={platforms.has(p)
+                  ? { borderColor: 'rgba(138,43,226,0.6)', background: 'rgba(138,43,226,0.14)', color: '#E9D5FF' }
+                  : { borderColor: 'rgba(255,255,255,0.08)', color: '#A1A1AA' }}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="mt-8">
+          <Label className="text-xs uppercase tracking-widest text-zinc-400">Preferred formats (optional)</Label>
+          <div className="flex flex-wrap gap-2 mt-3">
+            {FORMATS.map((f) => (
+              <button
+                key={f}
+                onClick={() => toggle(setFormats, f)}
+                data-testid={`fmt-${f}`}
+                className="px-3 py-1.5 rounded-full text-xs font-medium border transition-colors"
+                style={formats.has(f)
+                  ? { borderColor: 'rgba(138,43,226,0.6)', background: 'rgba(138,43,226,0.14)', color: '#E9D5FF' }
+                  : { borderColor: 'rgba(255,255,255,0.08)', color: '#A1A1AA' }}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="mt-8">
+          <Label className="text-xs uppercase tracking-widest text-zinc-400">Goals (optional)</Label>
+          <div className="flex flex-wrap gap-2 mt-3">
+            {GOALS.map((g) => (
               <button
                 key={g.id}
-                onClick={() => toggle(g.id)}
+                onClick={() => toggle(setGoals, g.id)}
                 data-testid={`goal-${g.id}`}
-                className="text-left card-surface p-5 card-hover"
-                style={active ? { borderColor: 'rgba(138,43,226,0.6)', background: 'rgba(138,43,226,0.06)'} : {}}
+                className="px-3 py-1.5 rounded-full text-xs font-medium border transition-colors"
+                style={goals.has(g.id)
+                  ? { borderColor: 'rgba(138,43,226,0.6)', background: 'rgba(138,43,226,0.14)', color: '#E9D5FF' }
+                  : { borderColor: 'rgba(255,255,255,0.08)', color: '#A1A1AA' }}
               >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="font-display font-semibold text-white">{g.label}</div>
-                    <div className="text-sm text-zinc-500 mt-1">{g.desc}</div>
-                  </div>
-                  <div className={`w-5 h-5 rounded-full border ${active ? 'bg-violet-500 border-violet-400' : 'border-white/20'}`}>
-                    {active && <div className="w-full h-full flex items-center justify-center text-white text-[11px]">✓</div>}
-                  </div>
-                </div>
+                {g.label}
               </button>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        </section>
 
-        <div className="mt-12 flex flex-wrap items-center gap-3">
-          <button data-testid="explore-demo-btn" onClick={persistThenGo} className="btn-primary inline-flex items-center gap-2">
-            Explore Demo <ArrowRight size={16} />
-          </button>
+        <div className="mt-12 flex items-center gap-3">
           <button
-            data-testid="connect-youtube-btn"
-            onClick={connectYouTube}
-            disabled={connecting}
-            className="btn-ghost inline-flex items-center gap-2 disabled:opacity-60"
+            onClick={submit}
+            disabled={submitting}
+            className="btn-primary inline-flex items-center gap-2 disabled:opacity-60"
+            data-testid="onboarding-submit"
           >
-            {connecting ? <Loader2 size={16} className="animate-spin" /> : <Youtube size={16} />} Connect YouTube
+            {submitting ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+            {submitting ? 'Building your DNA…' : 'Build my Creator DNA'}
+            {!submitting && <ArrowRight size={16} />}
           </button>
-          <span className="text-xs text-zinc-500 ml-2">Real OAuth · reads your channel + last 20 videos</span>
+          <span className="text-xs text-zinc-500">Takes a few seconds. You can edit anything later.</span>
         </div>
       </div>
-
-      <Dialog open={setupOpen} onOpenChange={setSetupOpen}>
-        <DialogContent className="max-w-lg border-white/10" style={{ background: '#12121A' }} data-testid="setup-modal">
-          <DialogHeader>
-            <DialogTitle className="font-display text-xl flex items-center gap-2"><Info size={18} /> YouTube setup required</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-zinc-400">Add Google OAuth credentials to enable real channel ingest. One-time, ~5 minutes.</p>
-          <ol className="mt-4 space-y-3">
-            {(setup?.steps || []).map((s, i) => (
-              <li key={i} className="flex gap-3 text-sm text-zinc-200">
-                <span className="w-6 h-6 shrink-0 rounded-full bg-violet-500/15 text-violet-300 flex items-center justify-center text-xs font-mono">{i+1}</span>
-                <span className="leading-snug">{s}</span>
-              </li>
-            ))}
-          </ol>
-          <div className="mt-4 p-3 rounded-lg bg-white/5 border border-white/10 text-xs">
-            <div className="text-zinc-500 uppercase tracking-widest text-[10px] mb-1">Redirect URI (copy this)</div>
-            <code className="text-violet-300 break-all">{setup?.redirect_uri}</code>
-          </div>
-          <div className="text-xs text-zinc-500 mt-3">
-            The demo works fully without this — connecting only lets you swap Alex's DNA for your own real channel.
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
