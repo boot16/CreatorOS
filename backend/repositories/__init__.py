@@ -13,7 +13,7 @@ from models.domain import (
     YouTubeChannelSnapshot, CreatorVideo, VideoMetricSnapshot,
     CreatorIntent, CreatorDNASnapshot, Session, LLMCacheEntry,
     Project, ProjectBrief, CreativeObject, ActivityEvent,
-    ProjectSource, ProjectChatMessage,
+    ProjectSource, ProjectChatMessage, CreatorLearnedPrefs,
 )
 
 
@@ -297,6 +297,29 @@ class ActivityEventRepo:
     async def list_for_project(self, project_id: str, limit: int = 100) -> List[ActivityEvent]:
         cursor = self.db.activity_events.find({"project_id": project_id}, {"_id": 0}).sort("created_at", -1).limit(limit)
         return [ActivityEvent(**d) async for d in cursor]
+
+    async def list_for_creator(self, creator_id: str, since: Optional[str] = None, limit: int = 200) -> List[ActivityEvent]:
+        query: dict = {"creator_id": creator_id}
+        if since:
+            query["created_at"] = {"$gt": since}
+        cursor = self.db.activity_events.find(query, {"_id": 0}).sort("created_at", 1).limit(limit)
+        return [ActivityEvent(**d) async for d in cursor]
+
+
+class LearnedPrefsRepo:
+    """Persistence for the single learned-preferences document per creator."""
+    def __init__(self, db): self.db = db
+
+    async def get(self, creator_id: str) -> Optional[CreatorLearnedPrefs]:
+        document = await self.db.creator_learned_prefs.find_one({"creator_id": creator_id}, {"_id": 0})
+        return CreatorLearnedPrefs(**document) if document else None
+
+    async def upsert(self, prefs: CreatorLearnedPrefs) -> CreatorLearnedPrefs:
+        prefs.updated_at = _now()
+        await self.db.creator_learned_prefs.update_one(
+            {"creator_id": prefs.creator_id}, {"$set": prefs.model_dump()}, upsert=True,
+        )
+        return prefs
 
 
 # ---- M3: Sources + Project chat ----

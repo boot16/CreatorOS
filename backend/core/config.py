@@ -8,6 +8,11 @@ class Settings:
     DB_NAME: str
     DATA_MODE: str
     EMERGENT_LLM_KEY: str
+    ANTHROPIC_API_KEY: str
+    GROQ_API_KEY: str
+    GEMINI_API_KEY: str
+    LLM_PROVIDER: str  # anthropic | groq | gemini
+    LLM_MODEL: str     # optional override; falls back to a sensible default per provider
     APP_ENCRYPTION_KEY: str
     CORS_ORIGINS: list
     FRONTEND_URL: str
@@ -24,6 +29,11 @@ class Settings:
         self.DB_NAME = os.environ["DB_NAME"]
         self.DATA_MODE = os.environ.get("DATA_MODE", "demo").lower()
         self.EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
+        self.ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+        self.GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+        self.GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+        self.LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "anthropic").strip().lower()
+        self.LLM_MODEL = os.environ.get("LLM_MODEL", "").strip()
         self.APP_ENCRYPTION_KEY = os.environ.get("APP_ENCRYPTION_KEY", "")
         raw_cors = os.environ.get("CORS_ORIGINS", "*")
         self.CORS_ORIGINS = [o.strip() for o in raw_cors.split(",") if o.strip()]

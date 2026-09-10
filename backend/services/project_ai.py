@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from core.errors import AppError, Codes
 from services.llm import call_structured, call_text
 from repositories import (
-    ProjectRepo, CreativeObjectRepo, ProjectSourceRepo, ActivityEventRepo,
+    ProjectRepo, CreativeObjectRepo, ProjectSourceRepo, ActivityEventRepo, LearnedPrefsRepo,
 )
 from models.domain import Project, CreativeObject, ProjectSource
 
@@ -40,6 +40,7 @@ class ProjectContext:
         outline_obj: Optional[CreativeObject],
         other_objects: List[CreativeObject],
         sources: List[ProjectSource],
+        learned_prefs: Optional[dict] = None,
     ):
         self.project = project
         self.research = research_obj
@@ -47,6 +48,7 @@ class ProjectContext:
         self.outline = outline_obj
         self.other_objects = other_objects
         self.sources = sources
+        self.learned_prefs = learned_prefs
 
     @classmethod
     async def load(cls, db, project: Project) -> "ProjectContext":
@@ -60,7 +62,9 @@ class ProjectContext:
         special = {id(x) for x in (research, direction, outline) if x is not None}
         other = [o for o in objs if id(o) not in special]
         sources = await src_repo.list_for_project(project.id)
-        return cls(project, research, direction, outline, other, sources)
+        prefs = await LearnedPrefsRepo(db).get(project.creator_id)
+        return cls(project, research, direction, outline, other, sources,
+                   prefs.model_dump() if prefs else None)
 
     def render(self, *, include_content_objects: bool = True) -> str:
         """Render into a compact structured prompt block. Deterministic ordering."""
@@ -78,6 +82,18 @@ class ProjectContext:
         for k, v in b.items():
             if v:
                 parts.append(f"- {k}: {v}")
+
+        prefs = self.learned_prefs or {}
+        if any(prefs.get(key) for key in ("likes", "dislikes", "patterns", "performance_notes")):
+            parts.append("\n## LEARNED CREATOR PREFERENCES")
+            if prefs.get("likes"):
+                parts.append(f"- tends to like: {'; '.join(prefs['likes'][:6])}")
+            if prefs.get("dislikes"):
+                parts.append(f"- tends to reject: {'; '.join(prefs['dislikes'][:6])}")
+            if prefs.get("patterns"):
+                parts.append(f"- working patterns: {'; '.join(prefs['patterns'][:6])}")
+            if prefs.get("performance_notes"):
+                parts.append(f"- performance notes: {'; '.join(prefs['performance_notes'][:4])}")
 
         if self.sources:
             parts.append("\n## SOURCES (user-provided)")

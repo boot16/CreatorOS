@@ -81,4 +81,8 @@ async def ensure_indexes(db):
     await db.project_sources.create_index([("project_id", 1), ("created_at", 1)])
     await db.project_chats.create_index([("project_id", 1), ("created_at", 1)])
 
+    # M4: one compact profile per creator and efficient incremental event reads.
+    await db.activity_events.create_index([("creator_id", 1), ("created_at", 1)])
+    await db.creator_learned_prefs.create_index("creator_id", unique=True)
+
     log.info("indexes_ensured")

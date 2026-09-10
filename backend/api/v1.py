@@ -13,16 +13,17 @@ from api.schemas import (
     CreativeObjectBody, CreativeObjectUpdateBody, CreativeObjectResponse,
     ActivityEventResponse,
     ResearchRequest, SourceBody, SourceResponse, DirectionSelectBody,
-    EditRequest, ChatRequest, ChatMessageResponse,
+    EditRequest, AiFeedbackBody, LearnedPrefsResponse, ChatRequest, ChatMessageResponse,
     _CONTENT_TYPES, _STATUSES, _CREATIVE_TYPES,
 )
-from repositories import IntentRepo, DNARepo, PlatformRepo, CreatorRepo, ProjectRepo, CreativeObjectRepo, ActivityEventRepo, ProjectSourceRepo, ProjectChatRepo
+from repositories import IntentRepo, DNARepo, PlatformRepo, CreatorRepo, ProjectRepo, CreativeObjectRepo, ActivityEventRepo, ProjectSourceRepo, ProjectChatRepo, LearnedPrefsRepo
 from models.domain import Project, CreativeObject, ProjectBrief, ProjectSource, ProjectChatMessage
 from services.youtube_sync import YouTubeSyncService
 from services.project_ai import (
     ProjectContext, run_research, run_directions, run_outline, run_content,
     run_edit, run_critique, run_assistant_reply,
 )
+from services.learned_prefs import maybe_fold_in
 from providers import make_creator_provider
 
 
@@ -466,6 +467,35 @@ def build_v1_router(db):
             raise AppError(Codes.INVALID_INPUT, "Unknown action", status_code=400)
         proposal = await run_edit(ctx, action=body.action, content=body.content, instruction=body.instruction or "")
         return {"action": body.action, "proposal": proposal}
+
+    @router.post("/projects/{project_id}/ai/feedback")
+    async def ai_feedback(project_id: str, body: AiFeedbackBody, user: CurrentUser = Depends(_user_dep)):
+        creator_id, _ = _require_authed(user)
+        await _require_owned_project(project_id, user)
+        get_rate_limiter().check(f"ai-feedback-{creator_id}", *BUDGETS["ai_feedback"])
+        if body.kind not in {"rewrite", "improve_hook", "critique"}:
+            raise AppError(Codes.INVALID_INPUT, "Unknown AI proposal kind", status_code=400)
+        if body.action not in {"accepted", "discarded"}:
+            raise AppError(Codes.INVALID_INPUT, "action must be accepted or discarded", status_code=400)
+        await ActivityEventRepo(db).add(project_id, creator_id, "ai_proposal_feedback", {
+            "kind": body.kind, "action": body.action,
+            **({"reason": body.reason} if body.reason else {}),
+        })
+        await maybe_fold_in(db, creator_id)
+        return {"ok": True}
+
+    @router.get("/me/learned-prefs", response_model=Optional[LearnedPrefsResponse])
+    async def get_learned_prefs(user: CurrentUser = Depends(_user_dep)):
+        creator_id, _ = _require_authed(user)
+        prefs = await LearnedPrefsRepo(db).get(creator_id)
+        return LearnedPrefsResponse(**prefs.model_dump()) if prefs else None
+
+    @router.post("/me/learned-prefs/refresh", response_model=Optional[LearnedPrefsResponse])
+    async def refresh_learned_prefs(user: CurrentUser = Depends(_user_dep)):
+        creator_id, _ = _require_authed(user)
+        get_rate_limiter().check(f"prefs-refresh-{creator_id}", *BUDGETS["learned_prefs_refresh"])
+        prefs = await maybe_fold_in(db, creator_id, force=True)
+        return LearnedPrefsResponse(**prefs.model_dump()) if prefs else None
 
     # ----- AI: Project-scoped assistant chat -----
     @router.get("/projects/{project_id}/ai/chat", response_model=list[ChatMessageResponse])

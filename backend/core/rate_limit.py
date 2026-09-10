@@ -47,4 +47,6 @@ BUDGETS = {
     # M3: Project-Aware AI
     "project_ai_generate": (30, 3600), # research / directions / outline / content / edit
     "project_ai_chat": (60, 3600),     # assistant messages
+    "ai_feedback": (120, 3600),
+    "learned_prefs_refresh": (10, 3600),
 }

@@ -302,6 +302,19 @@ class ActivityEvent(BaseModel):
     created_at: str = Field(default_factory=_now)
 
 
+class CreatorLearnedPrefs(BaseModel):
+    """A compact behavioral profile, updated incrementally from creator signals."""
+    creator_id: str
+    likes: List[str] = Field(default_factory=list)
+    dislikes: List[str] = Field(default_factory=list)
+    patterns: List[str] = Field(default_factory=list)
+    performance_notes: List[str] = Field(default_factory=list)
+    signal_count: int = 0
+    last_event_at: Optional[str] = None
+    version: int = 1
+    updated_at: str = Field(default_factory=_now)
+
+
 # ---- Versioned LLM cache ----
 class LLMCacheEntry(BaseModel):
     id: str = Field(default_factory=_uid)

@@ -452,16 +452,45 @@ async def assistant_chat(req: AssistantRequest,
     })
 
     async def gen():
-        from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
-        chat = LlmChat(api_key=settings.EMERGENT_LLM_KEY, session_id=f"studio-{req.session_id}",
-                       system_message=system_msg).with_model("anthropic", "claude-sonnet-4-6")
+        provider, model = settings.LLM_PROVIDER, (settings.LLM_MODEL or None)
         collected = ""
-        async for ev in chat.stream_message(UserMessage(text=user_prompt)):
-            if isinstance(ev, TextDelta):
-                collected += ev.content
-                yield ev.content
-            elif isinstance(ev, StreamDone):
-                break
+
+        if provider == "groq":
+            from groq import AsyncGroq
+            client = AsyncGroq(api_key=settings.GROQ_API_KEY)
+            stream = await client.chat.completions.create(
+                model=model or "llama-3.3-70b-versatile", max_tokens=4096, stream=True,
+                messages=[{"role": "system", "content": system_msg}, {"role": "user", "content": user_prompt}],
+            )
+            async for chunk in stream:
+                delta = chunk.choices[0].delta.content or ""
+                if delta:
+                    collected += delta
+                    yield delta
+
+        elif provider == "gemini":
+            from google import genai
+            from google.genai import types
+            client = genai.Client(api_key=settings.GEMINI_API_KEY)
+            async for chunk in await client.aio.models.generate_content_stream(
+                model=model or "gemini-2.0-flash", contents=user_prompt,
+                config=types.GenerateContentConfig(system_instruction=system_msg, max_output_tokens=4096),
+            ):
+                if chunk.text:
+                    collected += chunk.text
+                    yield chunk.text
+
+        else:  # anthropic (default)
+            import anthropic
+            client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+            async with client.messages.stream(
+                model=model or "claude-sonnet-4-6", max_tokens=4096,
+                system=system_msg, messages=[{"role": "user", "content": user_prompt}],
+            ) as stream:
+                async for text in stream.text_stream:
+                    collected += text
+                    yield text
+
         await db.assistant_history.insert_one({
             "session_id": req.session_id, "owner_key": owner_key,
             "role": "assistant", "content": collected,

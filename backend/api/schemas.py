@@ -187,6 +187,22 @@ class EditRequest(BaseModel):
     instruction: Optional[str] = Field(default=None, max_length=2000)
 
 
+class AiFeedbackBody(BaseModel):
+    kind: str = Field(max_length=40)
+    action: str
+    reason: Optional[str] = Field(default=None, max_length=300)
+
+
+class LearnedPrefsResponse(BaseModel):
+    creator_id: str
+    likes: List[str] = Field(default_factory=list)
+    dislikes: List[str] = Field(default_factory=list)
+    patterns: List[str] = Field(default_factory=list)
+    performance_notes: List[str] = Field(default_factory=list)
+    signal_count: int = 0
+    updated_at: str
+
+
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
 

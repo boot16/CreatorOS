@@ -629,8 +629,22 @@ function CreativeObjectEditor({ obj, projectId, onChanged, onDeleted }) {
     const newText = proposal.text;
     setContent(newText);
     setSaveState('dirty');
+    logFeedback('accepted');
     setProposal(null);
     toast('AI edit applied. You can undo by editing.');
+  };
+
+  const logFeedback = (action) => {
+    // Fire-and-forget: preference enrichment must never block the editor.
+    api.post(`/v1/projects/${projectId}/ai/feedback`, {
+      kind: proposal?.action,
+      action,
+    }).catch(() => {});
+  };
+
+  const discardProposal = () => {
+    logFeedback('discarded');
+    setProposal(null);
   };
 
   const del = async () => {
@@ -766,7 +780,7 @@ function CreativeObjectEditor({ obj, projectId, onChanged, onDeleted }) {
               <button onClick={acceptProposal} className="btn-primary inline-flex items-center gap-2 !py-1.5 !px-3 text-xs" data-testid={`proposal-accept-${obj.id}`}>
                 <Check size={12} /> Accept & replace
               </button>
-              <button onClick={() => setProposal(null)} className="btn-ghost inline-flex items-center gap-2 !py-1.5 !px-3 text-xs" data-testid={`proposal-discard-${obj.id}`}>
+              <button onClick={discardProposal} className="btn-ghost inline-flex items-center gap-2 !py-1.5 !px-3 text-xs" data-testid={`proposal-discard-${obj.id}`}>
                 <X size={12} /> Discard
               </button>
             </div>

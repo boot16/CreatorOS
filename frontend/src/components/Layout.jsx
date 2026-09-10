@@ -5,12 +5,15 @@ import { useShortlist } from '../lib/shortlist';
 
 const links = [
   { to: '/app', label: 'Projects', icon: LayoutGrid, end: true },
-  { to: '/app/feed', label: 'Feed', icon: Sparkles },
-  { to: '/app/trends', label: 'Trends', icon: Radar },
-  { to: '/app/dna', label: 'DNA', icon: Lightbulb },
   { to: '/app/studio', label: 'Studio', icon: MessageSquare },
   { to: '/app/scripts', label: 'Scripts', icon: FileText },
   { to: '/app/shortlist', label: 'Saved', icon: Bookmark, badge: true },
+];
+
+const demoLinks = [
+  { to: '/app/feed', label: 'Feed', icon: Sparkles },
+  { to: '/app/trends', label: 'Trends', icon: Radar },
+  { to: '/app/dna', label: 'DNA', icon: Lightbulb },
   { to: '/app/collab', label: 'Collab', icon: Users },
 ];
 
@@ -42,6 +45,22 @@ export default function Layout({ children }) {
                     {count}
                   </span>
                 )}
+              </NavLink>
+            ))}
+            <span className="mx-1 h-4 w-px bg-white/10" aria-hidden="true" />
+            {demoLinks.map(({ to, label, icon: Icon }) => (
+              <NavLink
+                key={to} to={to}
+                data-testid={`nav-${label.toLowerCase().replace(' ','-')}`}
+                title={`${label} — seeded demo data, not your own`}
+                className={({ isActive }) =>
+                  `px-3 py-2 rounded-full text-xs font-medium flex items-center gap-1.5 opacity-60 hover:opacity-100 ${
+                    isActive ? 'bg-white/5 text-white' : 'text-zinc-500 hover:text-white'
+                  }`}
+              >
+                <Icon size={13} />
+                {label}
+                <span className="px-1 rounded text-[9px] uppercase tracking-wide bg-white/5 text-zinc-500">demo</span>
               </NavLink>
             ))}
           </nav>
