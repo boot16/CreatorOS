@@ -24,7 +24,7 @@ T = TypeVar("T", bound=BaseModel)
 _DEFAULT_MODEL_FOR_PROVIDER = {
     "anthropic": "claude-sonnet-4-6",
     "groq": "llama-3.3-70b-versatile",
-    "gemini": "gemini-2.0-flash",
+    "gemini": "gemini-3.6-flash",
 }
 
 
