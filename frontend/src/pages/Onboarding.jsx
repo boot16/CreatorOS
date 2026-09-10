@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowRight, Youtube, Loader2, Info } from 'lucide-react';
+import { ArrowRight, Youtube, Loader2, Info, LogIn } from 'lucide-react';
 import { api, API } from '../lib/api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 
@@ -17,8 +17,20 @@ export default function Onboarding() {
   const nav = useNavigate();
   const [picked, setPicked] = useState(new Set(['grow', 'trends']));
   const [connecting, setConnecting] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [user, setUser] = useState(null);
   const [setupOpen, setSetupOpen] = useState(false);
   const [setup, setSetup] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    api.get('/auth/status')
+      .then(({ data }) => { if (alive) user !== data.user && setUser(data.user || null); })
+      .catch(() => { if (alive) setUser(null); })
+      .finally(() => { if (alive) setCheckingAuth(false); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggle = (id) => {
     const s = new Set(picked);
@@ -27,17 +39,30 @@ export default function Onboarding() {
   };
 
   const persistThenGo = async () => {
-    // Persist intent when logged in; ignore silently in demo mode
+    if (!user) {
+      window.location.href = `${API}/auth/google/login`;
+      return;
+    }
     try {
       await api.put('/v1/creator-intent', {
         primary_goal: [...picked][0] || null,
         secondary_goals: [...picked].slice(1),
       });
-    } catch { /* not logged in — skipped */ }
-    nav('/dna-reveal');
+      nav('/dna-reveal');
+    } catch (err) {
+      if (err?.response?.status === 401) {
+        toast.error('Your session expired. Please sign in again.');
+      } else {
+        toast.error('Could not save your onboarding choices.');
+      }
+    }
   };
 
   const connectYouTube = async () => {
+    if (!user) {
+      window.location.href = `${API}/auth/google/login`;
+      return;
+    }
     setConnecting(true);
     try {
       const { data } = await api.get('/auth/status');
@@ -45,12 +70,13 @@ export default function Onboarding() {
         setSetup(data.setup_guide);
         setSetupOpen(true);
       } else {
-        window.location.href = `${API}/auth/google/login`;
+        window.location.href = `${API}/auth/youtube/connect`;
       }
     } catch {
-      toast.error('Could not check auth status.');
+      toast.error('Could not check Google/YouTube configuration.');
+    } finally {
+      setConnecting(false);
     }
-    setConnecting(false);
   };
 
   return (
@@ -60,7 +86,9 @@ export default function Onboarding() {
           <div className="w-7 h-7 rounded-lg" style={{ background: 'linear-gradient(135deg,#8A2BE2,#4C1D95)' }} />
           <span className="font-display text-lg font-semibold">CreatorOS</span>
         </Link>
-        <span className="text-xs text-zinc-500">Step 1 of 1</span>
+        <span className="text-xs text-zinc-500">
+          {checkingAuth ? 'Checking account…' : user ? `Signed in as ${user.name || user.email || 'creator'}` : 'Account required'}
+        </span>
       </header>
 
       <div className="max-w-3xl mx-auto px-6 py-16">
@@ -68,7 +96,9 @@ export default function Onboarding() {
         <h1 className="font-display text-4xl md:text-5xl font-semibold tracking-tight leading-tight">
           What are you optimizing for?
         </h1>
-        <p className="mt-4 text-zinc-400">Pick what matters. This tunes the reasoning shown next to every recommendation.</p>
+        <p className="mt-4 text-zinc-400">
+          Your CreatorOS account works without a social connection. Connect YouTube only if you want CreatorOS to learn from your channel.
+        </p>
 
         <div className="mt-10 grid sm:grid-cols-2 gap-3">
           {GOALS.map(g => {
@@ -96,18 +126,26 @@ export default function Onboarding() {
         </div>
 
         <div className="mt-12 flex flex-wrap items-center gap-3">
-          <button data-testid="explore-demo-btn" onClick={persistThenGo} className="btn-primary inline-flex items-center gap-2">
-            Explore Demo <ArrowRight size={16} />
-          </button>
+          {!checkingAuth && !user ? (
+            <button onClick={() => { window.location.href = `${API}/auth/google/login`; }} className="btn-primary inline-flex items-center gap-2" data-testid="google-login-btn">
+              <LogIn size={16} /> Sign in with Google
+            </button>
+          ) : (
+            <button data-testid="continue-btn" onClick={persistThenGo} disabled={checkingAuth} className="btn-primary inline-flex items-center gap-2 disabled:opacity-60">
+              Continue <ArrowRight size={16} />
+            </button>
+          )}
+
           <button
             data-testid="connect-youtube-btn"
             onClick={connectYouTube}
-            disabled={connecting}
-            className="btn-ghost inline-flex items-center gap-2 disabled:opacity-60"
+            disabled={connecting || checkingAuth || !user}
+            className="btn-ghost inline-flex items-center gap-2 disabled:opacity-50"
           >
-            {connecting ? <Loader2 size={16} className="animate-spin" /> : <Youtube size={16} />} Connect YouTube
+            {connecting ? <Loader2 size={16} className="animate-spin" /> : <Youtube size={16} />}
+            {user?.youtube_connected ? 'Reconnect YouTube' : 'Connect YouTube'}
           </button>
-          <span className="text-xs text-zinc-500 ml-2">Real OAuth · reads your channel + last 20 videos</span>
+          <span className="text-xs text-zinc-500 ml-2">Optional · YouTube read-only access</span>
         </div>
       </div>
 
@@ -116,7 +154,7 @@ export default function Onboarding() {
           <DialogHeader>
             <DialogTitle className="font-display text-xl flex items-center gap-2"><Info size={18} /> YouTube setup required</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-zinc-400">Add Google OAuth credentials to enable real channel ingest. One-time, ~5 minutes.</p>
+          <p className="text-sm text-zinc-400">Google OAuth must be configured before a real YouTube account can be connected.</p>
           <ol className="mt-4 space-y-3">
             {(setup?.steps || []).map((s, i) => (
               <li key={i} className="flex gap-3 text-sm text-zinc-200">
@@ -126,11 +164,8 @@ export default function Onboarding() {
             ))}
           </ol>
           <div className="mt-4 p-3 rounded-lg bg-white/5 border border-white/10 text-xs">
-            <div className="text-zinc-500 uppercase tracking-widest text-[10px] mb-1">Redirect URI (copy this)</div>
+            <div className="text-zinc-500 uppercase tracking-widest text-[10px] mb-1">Redirect URI</div>
             <code className="text-violet-300 break-all">{setup?.redirect_uri}</code>
-          </div>
-          <div className="text-xs text-zinc-500 mt-3">
-            The demo works fully without this — connecting only lets you swap Alex's DNA for your own real channel.
           </div>
         </DialogContent>
       </Dialog>
