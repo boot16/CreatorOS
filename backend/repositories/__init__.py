@@ -284,3 +284,78 @@ class CreativeObjectRepo:
         if r.matched_count == 0:
             return None
         return await self.get(obj_id)
+
+    async def delete(self, obj_id: str, project_id: str) -> bool:
+        r = await self.db.creative_objects.delete_one({"id": obj_id, "project_id": project_id})
+        return r.deleted_count > 0
+
+
+class ActivityEventRepo:
+    def __init__(self, db): self.db = db
+
+    async def add(self, project_id: str, creator_id: str, event_type: str, metadata: Optional[dict] = None) -> ActivityEvent:
+        ev = ActivityEvent(
+            project_id=project_id,
+            creator_id=creator_id,
+            event_type=event_type,
+            metadata=metadata or {},
+        )
+        await self.db.activity_events.insert_one(ev.model_dump())
+        return ev
+
+    async def list_for_project(self, project_id: str, limit: int = 100) -> List[ActivityEvent]:
+        cursor = self.db.activity_events.find({"project_id": project_id}, {"_id": 0}).sort("created_at", -1).limit(limit)
+        return [ActivityEvent(**d) async for d in cursor]
+
+    async def list_for_creator(self, creator_id: str, since: Optional[str] = None, limit: int = 200) -> List[ActivityEvent]:
+        q = {"creator_id": creator_id}
+        if since:
+            q["created_at"] = {"$gt": since}
+        cursor = self.db.activity_events.find(q, {"_id": 0}).sort("created_at", 1).limit(limit)
+        return [ActivityEvent(**d) async for d in cursor]
+
+
+# ---- M3: Sources + Project chat ----
+class ProjectSourceRepo:
+    def __init__(self, db): self.db = db
+
+    async def create(self, src: ProjectSource) -> ProjectSource:
+        await self.db.project_sources.insert_one(src.model_dump())
+        return src
+
+    async def list_for_project(self, project_id: str) -> List[ProjectSource]:
+        cursor = self.db.project_sources.find({"project_id": project_id}, {"_id": 0}).sort("created_at", 1)
+        return [ProjectSource(**d) async for d in cursor]
+
+    async def delete(self, src_id: str, project_id: str) -> bool:
+        r = await self.db.project_sources.delete_one({"id": src_id, "project_id": project_id})
+        return r.deleted_count > 0
+
+
+class ProjectChatRepo:
+    def __init__(self, db): self.db = db
+
+    async def add(self, msg: ProjectChatMessage) -> ProjectChatMessage:
+        await self.db.project_chats.insert_one(msg.model_dump())
+        return msg
+
+    async def list_for_project(self, project_id: str, limit: int = 200) -> List[ProjectChatMessage]:
+        cursor = self.db.project_chats.find({"project_id": project_id}, {"_id": 0}).sort("created_at", 1).limit(limit)
+        return [ProjectChatMessage(**d) async for d in cursor]
+
+
+class LearnedPrefsRepo:
+    def __init__(self, db): self.db = db
+
+    async def get(self, creator_id: str) -> Optional[CreatorLearnedPrefs]:
+        doc = await self.db.creator_learned_prefs.find_one({"creator_id": creator_id}, {"_id": 0})
+        return CreatorLearnedPrefs(**doc) if doc else None
+
+    async def upsert(self, prefs: CreatorLearnedPrefs) -> CreatorLearnedPrefs:
+        prefs.updated_at = _now()
+        await self.db.creator_learned_prefs.update_one(
+            {"creator_id": prefs.creator_id},
+            {"$set": prefs.model_dump()},
+            upsert=True,
+        )
+        return prefs
