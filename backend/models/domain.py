@@ -79,7 +79,7 @@ class ConnectedPlatform(BaseModel):
     id: str = Field(default_factory=_uid)
     creator_id: str
     platform: PlatformName
-    external_account_id: str  # e.g. Google `sub`
+    external_account_id: str
     external_channel_id: Optional[str] = None
     display_name: Optional[str] = None
     handle: Optional[str] = None
@@ -163,7 +163,7 @@ class CreatorIntent(BaseModel):
     updated_at: str = Field(default_factory=_now)
 
 
-# ---- Creator DNA (schema only — not populated yet) ----
+# ---- Creator DNA ----
 class DNAStatus(str, Enum):
     not_computed = "not_computed"
     insufficient_data = "insufficient_data"
@@ -206,7 +206,7 @@ class Session(BaseModel):
     created_at: str = Field(default_factory=_now)
 
 
-# ---- Projects (M2) ----
+# ---- Projects ----
 class ProjectContentType(str, Enum):
     youtube_video = "youtube_video"
     instagram_reel = "instagram_reel"
@@ -252,6 +252,40 @@ class Project(BaseModel):
     updated_at: str = Field(default_factory=_now)
 
 
+# ---- M5.1: Idea understanding ----
+class IdeaFieldOrigin(str, Enum):
+    """Where an idea-understanding field came from. Never present inference as creator fact."""
+    creator_provided = "creator_provided"
+    inferred = "inferred"
+    confirmed = "confirmed"
+
+
+class IdeaUnderstandingField(BaseModel):
+    value: Optional[str] = None
+    origin: IdeaFieldOrigin = IdeaFieldOrigin.inferred
+    confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+
+
+class IdeaUnderstanding(BaseModel):
+    """Canonical M5 state for what CreatorOS understands before developing directions."""
+    id: str = Field(default_factory=_uid)
+    project_id: str
+    creator_id: str
+    raw_idea: str
+    subject: IdeaUnderstandingField = Field(default_factory=IdeaUnderstandingField)
+    creator_perspective: IdeaUnderstandingField = Field(default_factory=IdeaUnderstandingField)
+    core_claim: IdeaUnderstandingField = Field(default_factory=IdeaUnderstandingField)
+    intent: IdeaUnderstandingField = Field(default_factory=IdeaUnderstandingField)
+    target_audience: IdeaUnderstandingField = Field(default_factory=IdeaUnderstandingField)
+    desired_effect: IdeaUnderstandingField = Field(default_factory=IdeaUnderstandingField)
+    assumptions: List[str] = Field(default_factory=list)
+    open_questions: List[str] = Field(default_factory=list)
+    material_unknowns: List[str] = Field(default_factory=list)
+    version: int = 1
+    created_at: str = Field(default_factory=_now)
+    updated_at: str = Field(default_factory=_now)
+
+
 class CreativeObjectType(str, Enum):
     notes = "notes"
     outline = "outline"
@@ -273,22 +307,21 @@ class CreativeObject(BaseModel):
 
 
 class ProjectSource(BaseModel):
-    """M3: research sources attached to a Project (user-provided URLs or pasted text)."""
+    """Research sources attached to a Project (user-provided URLs or pasted text)."""
     id: str = Field(default_factory=_uid)
     project_id: str
     title: str
     url: Optional[str] = None
-    source_type: str = "url"  # url | text
-    content: str = ""  # extracted/pasted content or short summary
+    source_type: str = "url"
+    content: str = ""
     created_at: str = Field(default_factory=_now)
 
 
 class ProjectChatMessage(BaseModel):
-    """M3: assistant messages scoped to a project."""
     id: str = Field(default_factory=_uid)
     project_id: str
     creator_id: str
-    role: str  # user | assistant
+    role: str
     content: str
     created_at: str = Field(default_factory=_now)
 
@@ -324,7 +357,7 @@ class LLMCacheEntry(BaseModel):
     data_version: int = 1
     prompt_version: int = 1
     model: str
-    key_hash: str  # sha256 of composite key
+    key_hash: str
     value: Any
     created_at: str = Field(default_factory=_now)
     expires_at: Optional[str] = None
