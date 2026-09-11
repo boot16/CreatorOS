@@ -27,6 +27,7 @@ from providers import make_creator_provider, make_trend_provider, make_opportuni
 from services.llm import CachedLLMService, call_structured, call_text
 from api.schemas import IdeaLabOutput, OppBulletsOutput, TrendExplanationOutput
 from api.v1 import build_v1_router
+from api.m5 import build_m5_router
 from repositories import CreatorRepo
 
 from seed_data import (
@@ -545,5 +546,6 @@ app.include_router(build_features_router(db, {
 }), prefix="/api")
 
 app.include_router(build_v1_router(db), prefix="/api")
+app.include_router(build_m5_router(db), prefix="/api")
 
 log.info("routers_mounted")
