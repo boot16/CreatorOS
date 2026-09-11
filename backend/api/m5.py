@@ -11,8 +11,8 @@ from pydantic import BaseModel, Field
 from core.errors import AppError, Codes
 from core.identity import CurrentUser, SESSION_COOKIE, resolve_identity
 from core.rate_limit import get_rate_limiter, BUDGETS
-from models.domain import IdeaUnderstanding
-from repositories import ProjectRepo, ActivityEventRepo
+from models.domain import IdeaUnderstanding, CreativeObject
+from repositories import ProjectRepo, ActivityEventRepo, CreativeObjectRepo
 from repositories.idea_understanding import IdeaUnderstandingRepo
 from repositories.creative_directions import CreativeDirectionRepo
 from services.idea_understanding import understand_idea
@@ -68,6 +68,26 @@ def _response(item: IdeaUnderstanding) -> IdeaUnderstandingResponse:
     return IdeaUnderstandingResponse(**item.model_dump())
 
 
+def _direction_markdown(item) -> str:
+    lines = [
+        f"## Direction\n{item.title}",
+        f"## Premise\n{item.premise}",
+        f"## Angle\n{item.angle}",
+        f"## Audience promise\n{item.audience_promise}",
+        f"## Creative treatment\n{item.creative_treatment}",
+        f"## Narrative shape\n{item.narrative_shape}",
+        f"## Format fit\n{item.format_fit}",
+        f"## Why this direction\n{item.why_this_direction}",
+    ]
+    if item.emotional_movement:
+        lines.append(f"## Emotional movement\n{item.emotional_movement}")
+    if item.risks:
+        lines.append("## Risks / things to solve\n" + "\n".join(f"- {x}" for x in item.risks))
+    if item.unresolved_questions:
+        lines.append("## Unresolved questions\n" + "\n".join(f"- {x}" for x in item.unresolved_questions))
+    return "\n\n".join(lines).strip()
+
+
 def build_m5_router(db):
     router = APIRouter(prefix="/v1", tags=["m5"])
 
@@ -87,6 +107,30 @@ def build_m5_router(db):
         if not project:
             raise AppError(Codes.NOT_FOUND, "Project not found", status_code=404)
         return project
+
+    async def _sync_direction_artifact(project, item):
+        """Bridge M5 structured direction into existing M3 generation context.
+
+        Until downstream generation consumes CreativeDirection directly, ProjectContext still
+        reads the singleton CreativeObject(type=direction). Keeping this adapter prevents the
+        new workflow from breaking the already-working outline/content pipeline.
+        """
+        repo = CreativeObjectRepo(db)
+        objects = await repo.list_for_project(project.id)
+        existing = next(
+            (obj for obj in objects if (obj.type.value if hasattr(obj.type, "value") else obj.type) == "direction"),
+            None,
+        )
+        content = _direction_markdown(item)
+        if existing:
+            await repo.update(existing.id, project.id, {"title": item.title[:120], "content": content})
+        else:
+            await repo.create(CreativeObject(
+                project_id=project.id,
+                type="direction",
+                title=item.title[:120],
+                content=content,
+            ))
 
     @router.get(
         "/projects/{project_id}/idea-understanding",
@@ -203,6 +247,13 @@ def build_m5_router(db):
         )
         if not item:
             raise AppError(Codes.NOT_FOUND, "Creative direction not found", status_code=404)
+
+        # Keep the existing, proven M3 outline/content context path working during M5 migration.
+        await _sync_direction_artifact(project, item)
+        current_status = project.status.value if hasattr(project.status, "value") else project.status
+        if current_status in {"idea", "researching"}:
+            await ProjectRepo(db).update(project.id, project.creator_id, {"status": "developing"})
+
         await ActivityEventRepo(db).add(
             project.id,
             project.creator_id,
