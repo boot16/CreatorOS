@@ -20,6 +20,7 @@ import {
   AlertDialogTrigger,
 } from '../components/ui/alert-dialog';
 import { ResearchTab, DirectionTab, ContentTab, ProjectAssistant } from './ProjectAI';
+import ProjectIdea from './ProjectIdea';
 
 const STATUSES = [
   { value: 'idea', label: 'Idea' },
@@ -165,7 +166,7 @@ export default function ProjectWorkspace() {
   const nav = useNavigate();
   const [project, setProject] = useState(null);
   const [notFound, setNotFound] = useState(false);
-  const [tab, setTab] = useState('brief');
+  const [tab, setTab] = useState('idea');
   const [sideTab, setSideTab] = useState('activity');
   const [activityBump, setActivityBump] = useState(0);
 
@@ -276,13 +277,20 @@ export default function ProjectWorkspace() {
 
       <div className="grid lg:grid-cols-[1fr_280px] gap-8">
         <Tabs value={tab} onValueChange={setTab}>
-          <TabsList className="bg-white/[0.03] border border-white/10 p-1 rounded-full">
+          <TabsList className="bg-white/[0.03] border border-white/10 p-1 rounded-full flex flex-wrap h-auto gap-1">
+            <TabsTrigger value="idea" data-testid="tab-idea" className="rounded-full data-[state=active]:bg-violet-500/20 data-[state=active]:text-violet-100">Idea</TabsTrigger>
             <TabsTrigger value="brief" data-testid="tab-brief" className="rounded-full data-[state=active]:bg-violet-500/20 data-[state=active]:text-violet-100">Brief</TabsTrigger>
             <TabsTrigger value="research" data-testid="tab-research" className="rounded-full data-[state=active]:bg-violet-500/20 data-[state=active]:text-violet-100">Research</TabsTrigger>
             <TabsTrigger value="direction" data-testid="tab-direction" className="rounded-full data-[state=active]:bg-violet-500/20 data-[state=active]:text-violet-100">Direction</TabsTrigger>
             <TabsTrigger value="content" data-testid="tab-content" className="rounded-full data-[state=active]:bg-violet-500/20 data-[state=active]:text-violet-100">Content</TabsTrigger>
             <TabsTrigger value="ship" data-testid="tab-ship" className="rounded-full data-[state=active]:bg-violet-500/20 data-[state=active]:text-violet-100">Ship</TabsTrigger>
           </TabsList>
+          <TabsContent value="idea" className="mt-6">
+            <ProjectIdea
+              project={project}
+              onActivityChanged={() => setActivityBump((x) => x + 1)}
+            />
+          </TabsContent>
           <TabsContent value="brief" className="mt-6">
             <BriefTab project={project} onSaved={setProject} />
           </TabsContent>
