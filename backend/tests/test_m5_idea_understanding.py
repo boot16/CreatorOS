@@ -62,10 +62,13 @@ def test_build_understanding_deduplicates_prompt_lists():
     assert item.open_questions == ["Which example?"]
 
 
-def test_m5_router_exposes_expected_idea_routes():
+def test_m5_router_exposes_expected_workflow_routes():
     router = build_m5_router(object())
-    paths = {(route.path, next(iter(route.methods))) for route in router.routes}
-    route_paths = {path for path, _ in paths}
+    route_paths = {route.path for route in router.routes}
 
     assert "/v1/projects/{project_id}/idea-understanding" in route_paths
     assert "/v1/projects/{project_id}/idea-understanding/generate" in route_paths
+    assert "/v1/projects/{project_id}/creative-directions" in route_paths
+    assert "/v1/projects/{project_id}/creative-directions/generate" in route_paths
+    assert "/v1/projects/{project_id}/creative-directions/{direction_id}/select" in route_paths
+    assert "/v1/projects/{project_id}/creative-directions/{direction_id}/reject" in route_paths
