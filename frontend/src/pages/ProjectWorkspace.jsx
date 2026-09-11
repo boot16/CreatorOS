@@ -19,8 +19,9 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
   AlertDialogTrigger,
 } from '../components/ui/alert-dialog';
-import { ResearchTab, DirectionTab, ContentTab, ProjectAssistant } from './ProjectAI';
+import { ResearchTab, ContentTab, ProjectAssistant } from './ProjectAI';
 import ProjectIdea from './ProjectIdea';
+import ProjectDirection from './ProjectDirection';
 
 const STATUSES = [
   { value: 'idea', label: 'Idea' },
@@ -302,10 +303,10 @@ export default function ProjectWorkspace() {
             />
           </TabsContent>
           <TabsContent value="direction" className="mt-6">
-            <DirectionTab
+            <ProjectDirection
               project={project}
               onProjectChanged={reloadProject}
-              onCreativeObjectsChanged={() => setActivityBump((x) => x + 1)}
+              onActivityChanged={() => setActivityBump((x) => x + 1)}
             />
           </TabsContent>
           <TabsContent value="content" className="mt-6">
