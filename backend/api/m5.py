@@ -14,7 +14,9 @@ from core.rate_limit import get_rate_limiter, BUDGETS
 from models.domain import IdeaUnderstanding
 from repositories import ProjectRepo, ActivityEventRepo
 from repositories.idea_understanding import IdeaUnderstandingRepo
+from repositories.creative_directions import CreativeDirectionRepo
 from services.idea_understanding import understand_idea
+from services.creative_directions import generate_creative_directions
 
 
 _SCALAR_FIELDS = {
@@ -153,5 +155,80 @@ def build_m5_router(db):
             {"version": item.version, "fields": sorted(patch.keys())},
         )
         return _response(item)
+
+    # ----- M5.1 Creative Directions v2 -----
+    @router.get("/projects/{project_id}/creative-directions")
+    async def list_creative_directions(project_id: str, user: CurrentUser = Depends(_user_dep)):
+        project = await _owned_project(project_id, user)
+        items = await CreativeDirectionRepo(db).list_for_project(project.id, project.creator_id)
+        return {"directions": [item.model_dump() for item in items]}
+
+    @router.post("/projects/{project_id}/creative-directions/generate")
+    async def create_creative_directions(project_id: str, user: CurrentUser = Depends(_user_dep)):
+        project = await _owned_project(project_id, user)
+        understanding = await IdeaUnderstandingRepo(db).get(project.id, project.creator_id)
+        if not understanding:
+            raise AppError(
+                Codes.INVALID_INPUT,
+                "Understand the idea before generating creative directions",
+                status_code=409,
+            )
+        get_rate_limiter().check(
+            f"creative-directions-v2-{project.creator_id}",
+            *BUDGETS["project_ai_generate"],
+        )
+        items = await generate_creative_directions(project, understanding)
+        await CreativeDirectionRepo(db).insert_many(items)
+        await ActivityEventRepo(db).add(
+            project.id,
+            project.creator_id,
+            "creative_directions_generated",
+            {
+                "batch_id": items[0].batch_id if items else None,
+                "count": len(items),
+                "understanding_version": understanding.version,
+            },
+        )
+        return {"directions": [item.model_dump() for item in items]}
+
+    @router.put("/projects/{project_id}/creative-directions/{direction_id}/select")
+    async def select_creative_direction(
+        project_id: str,
+        direction_id: str,
+        user: CurrentUser = Depends(_user_dep),
+    ):
+        project = await _owned_project(project_id, user)
+        item = await CreativeDirectionRepo(db).mark_selected(
+            direction_id, project.id, project.creator_id
+        )
+        if not item:
+            raise AppError(Codes.NOT_FOUND, "Creative direction not found", status_code=404)
+        await ActivityEventRepo(db).add(
+            project.id,
+            project.creator_id,
+            "creative_direction_selected",
+            {"direction_id": item.id, "title": item.title[:160]},
+        )
+        return item.model_dump()
+
+    @router.put("/projects/{project_id}/creative-directions/{direction_id}/reject")
+    async def reject_creative_direction(
+        project_id: str,
+        direction_id: str,
+        user: CurrentUser = Depends(_user_dep),
+    ):
+        project = await _owned_project(project_id, user)
+        item = await CreativeDirectionRepo(db).mark_rejected(
+            direction_id, project.id, project.creator_id
+        )
+        if not item:
+            raise AppError(Codes.NOT_FOUND, "Creative direction not found", status_code=404)
+        await ActivityEventRepo(db).add(
+            project.id,
+            project.creator_id,
+            "creative_direction_rejected",
+            {"direction_id": item.id, "title": item.title[:160]},
+        )
+        return item.model_dump()
 
     return router
