@@ -85,11 +85,18 @@ async def ensure_indexes(db):
     await db.activity_events.create_index([("creator_id", 1), ("created_at", 1)])
     await db.creator_learned_prefs.create_index("creator_id", unique=True)
 
-    # M5.1: one canonical idea-understanding document per project, scoped to its creator.
+    # M5.1: canonical idea understanding and structured creative directions.
     await db.idea_understandings.create_index("id", unique=True)
     await db.idea_understandings.create_index(
         [("project_id", 1), ("creator_id", 1)], unique=True
     )
     await db.idea_understandings.create_index([("creator_id", 1), ("updated_at", -1)])
+
+    await db.creative_directions.create_index("id", unique=True)
+    await db.creative_directions.create_index(
+        [("project_id", 1), ("creator_id", 1), ("created_at", 1)]
+    )
+    await db.creative_directions.create_index([("project_id", 1), ("batch_id", 1)])
+    await db.creative_directions.create_index([("project_id", 1), ("status", 1)])
 
     log.info("indexes_ensured")
