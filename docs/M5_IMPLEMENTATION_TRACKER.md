@@ -25,9 +25,9 @@ Chat is a control interface. Persistent project state is the source of truth. Ge
 | 5.1.0 | Audit current project workflow | IMPLEMENTED | Existing Project, Brief, Directions, Outline, CreativeObject, Source, Chat and AI service mapped before changes |
 | 5.1.1 | Idea Understanding model | IMPLEMENTED | Raw thought becomes structured idea/perspective/intent/audience/unknowns; creator-provided vs inferred information remains distinguishable |
 | 5.1.2 | Idea Understanding API | IMPLEMENTED | Owned project can request, retrieve, confirm/edit and persist understanding |
-| 5.1.3 | Idea Understanding UX | IN PROGRESS | Creator sees “what CreatorOS understood”, can correct it, and is not forced through a questionnaire |
-| 5.1.4 | Creative Direction v2 | TODO | 2–3 meaningfully different treatments, not rewritten hooks; direction records premise, angle, promise, treatment, risks and unresolved questions |
-| 5.1.5 | Direction actions | TODO | Select, reject, refine and combine without losing project state |
+| 5.1.3 | Idea Understanding UX | IMPLEMENTED | Creator sees “what CreatorOS understood”, can correct it, and is not forced through a questionnaire |
+| 5.1.4 | Creative Direction v2 | IMPLEMENTED | 2–3 meaningfully different treatments, not rewritten hooks; direction records premise, angle, promise, treatment, risks and unresolved questions |
+| 5.1.5 | Direction actions | IN PROGRESS | Select, reject, refine and combine without losing project state |
 | 5.1.6 | Readiness assessment | TODO | System identifies only material unresolved decisions before planning |
 | 5.1.7 | Format Requirements Engine | TODO | Deterministic schema defines required planning fields per medium; AI reasons/fills within that schema |
 | 5.1.8 | Reel Creative Plan v1 | TODO | Reel plan contains objective, takeaway, duration, beats, timing, script/audio, shot/framing, visual/B-roll, on-screen text, assets and evidence requirements |
@@ -62,7 +62,7 @@ This includes the previously defined M5 creator-intelligence work. It is deliber
 | X.1 | Separate environment from data mode | TODO | `APP_ENV=development|staging|production` is independent of `DATA_MODE=demo|real`; local real-user testing no longer requires demo mode |
 | X.2 | User isolation | IN PROGRESS | User A cannot read/write User B project intelligence or creative plans |
 | X.3 | Observability | TODO | Structured logs identify workflow stage/task without leaking prompts/secrets |
-| X.4 | Failure/recovery UX | TODO | AI/research failures preserve prior project state and support retry |
+| X.4 | Failure/recovery UX | IN PROGRESS | AI/research failures preserve prior project state and support retry |
 | X.5 | Cost/context controls | TODO | Prompt context is bounded, relevant and observable; no repeated full-project dumping where avoidable |
 
 ## Current architecture audit (2026-09-11)
@@ -84,12 +84,16 @@ Implemented M5.1 foundation:
 - Generate, retrieve and confirm/edit endpoints under `/api/v1/projects/{project_id}/idea-understanding`.
 - AI extraction service uses structured output and never marks AI extraction as creator-confirmed.
 - User edits are promoted to `confirmed` with confidence 1.0.
-- Activity events record understanding generation/confirmation without storing the full raw prompt in event metadata.
-- Focused unit tests cover origin behavior, confidence clamping, list deduplication and route registration. No CI runner is currently attached to the branch, so these tests are committed but not yet classified TESTED.
+- Project workspace now starts on an Idea surface that accepts a rough thought, shows CreatorOS's interpretation, visibly labels inference, and lets the creator correct/confirm it.
+- Dedicated `CreativeDirection` domain model and collection store structured creative treatments instead of prose blobs.
+- Direction v2 generation uses the canonical Idea Understanding and explicitly asks for different creative mechanisms/treatments rather than alternative hooks.
+- Direction v2 UI shows premise, angle, audience promise, treatment, narrative shape, format fit, risks and unresolved questions.
+- Select and reject actions persist and emit activity events; refine/combine remain outstanding under 5.1.5.
+- Focused unit tests cover origin behavior, confidence clamping, list deduplication and M5 route registration. No CI runner is currently attached to the branch, so these tests are committed but not yet classified TESTED.
 
 Current gaps relevant to M5:
-- `ProjectBrief` cannot represent raw idea vs creator perspective vs inference/unknowns; M5 now uses the dedicated `IdeaUnderstanding` model for this state.
-- Direction schema is shallow (`angle`, `takeaway`, `format`, `tone`, `why_it_works`).
+- Legacy `ProjectBrief` still exists for compatibility; canonical idea meaning now lives in `IdeaUnderstanding`.
+- Refine/combine direction actions and readiness assessment are not yet implemented.
 - Reel planning is currently a generic short outline (`hook`, 3–5 beats, ending), not a production specification.
 - Research currently summarizes only supplied context/sources; there is no evidence-task orchestration yet.
 - `CreativeObject.content` is plain text, so canonical structured planning state needs dedicated models rather than encoding critical state into prose.
