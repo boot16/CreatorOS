@@ -286,6 +286,35 @@ class IdeaUnderstanding(BaseModel):
     updated_at: str = Field(default_factory=_now)
 
 
+class CreativeDirectionStatus(str, Enum):
+    proposed = "proposed"
+    selected = "selected"
+    rejected = "rejected"
+
+
+class CreativeDirection(BaseModel):
+    """A persistent, meaningfully distinct interpretation of an understood idea."""
+    id: str = Field(default_factory=_uid)
+    project_id: str
+    creator_id: str
+    batch_id: str
+    source_understanding_version: int
+    title: str
+    premise: str
+    angle: str
+    audience_promise: str
+    creative_treatment: str
+    narrative_shape: str
+    emotional_movement: Optional[str] = None
+    format_fit: str
+    why_this_direction: str
+    risks: List[str] = Field(default_factory=list)
+    unresolved_questions: List[str] = Field(default_factory=list)
+    status: CreativeDirectionStatus = CreativeDirectionStatus.proposed
+    created_at: str = Field(default_factory=_now)
+    updated_at: str = Field(default_factory=_now)
+
+
 class CreativeObjectType(str, Enum):
     notes = "notes"
     outline = "outline"
