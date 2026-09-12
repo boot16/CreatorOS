@@ -23,12 +23,12 @@ Chat is a control interface. Persistent project state is the source of truth. Ge
 | ID | Deliverable | Status | Acceptance criteria |
 |---|---|---|---|
 | 5.1.0 | Audit current project workflow | IMPLEMENTED | Existing Project, Brief, Directions, Outline, CreativeObject, Source, Chat and AI service mapped before changes |
-| 5.1.1 | Idea Understanding model | IMPLEMENTED | Raw thought becomes structured idea/perspective/intent/audience/unknowns; creator-provided vs inferred information remains distinguishable |
-| 5.1.2 | Idea Understanding API | IMPLEMENTED | Owned project can request, retrieve, confirm/edit and persist understanding |
-| 5.1.3 | Idea Understanding UX | IMPLEMENTED | Creator sees “what CreatorOS understood”, can correct it, and is not forced through a questionnaire |
-| 5.1.4 | Creative Direction v2 | IMPLEMENTED | 2–3 meaningfully different treatments, not rewritten hooks; direction records premise, angle, promise, treatment, risks and unresolved questions |
-| 5.1.5 | Direction actions | IN PROGRESS | Select, reject, refine and combine without losing project state |
-| 5.1.6 | Readiness assessment | TODO | System identifies only material unresolved decisions before planning |
+| 5.1.1 | Idea Understanding model | RUNTIME VERIFIED | Raw thought becomes structured idea/perspective/intent/audience/unknowns; creator-provided vs inferred information remains distinguishable |
+| 5.1.2 | Idea Understanding API | RUNTIME VERIFIED | Owned project can request, retrieve, confirm/edit and persist understanding |
+| 5.1.3 | Idea Understanding UX | RUNTIME VERIFIED | Creator sees “what CreatorOS understood”, can correct it, and is not forced through a questionnaire |
+| 5.1.4 | Creative Direction v2 | RUNTIME VERIFIED | 2–3 meaningfully different treatments, not rewritten hooks; direction records premise, angle, promise, treatment, risks and unresolved questions |
+| 5.1.5 | Direction actions | IMPLEMENTED | Select, reject, refine and combine without losing project state |
+| 5.1.6 | Readiness assessment | IMPLEMENTED | System identifies only material unresolved decisions before planning |
 | 5.1.7 | Format Requirements Engine | TODO | Deterministic schema defines required planning fields per medium; AI reasons/fills within that schema |
 | 5.1.8 | Reel Creative Plan v1 | TODO | Reel plan contains objective, takeaway, duration, beats, timing, script/audio, shot/framing, visual/B-roll, on-screen text, assets and evidence requirements |
 | 5.1.9 | Research/evidence orchestration | TODO | Research is triggered by plan gaps/claims; provenance and uncertainty are preserved; no fabricated citations |
@@ -65,7 +65,7 @@ This includes the previously defined M5 creator-intelligence work. It is deliber
 | X.4 | Failure/recovery UX | IN PROGRESS | AI/research failures preserve prior project state and support retry |
 | X.5 | Cost/context controls | TODO | Prompt context is bounded, relevant and observable; no repeated full-project dumping where avoidable |
 
-## Current architecture audit (2026-09-11)
+## Current architecture audit (2026-09-12)
 
 Preserve and extend:
 - `Project` + ownership model
@@ -84,16 +84,23 @@ Implemented M5.1 foundation:
 - Generate, retrieve and confirm/edit endpoints under `/api/v1/projects/{project_id}/idea-understanding`.
 - AI extraction service uses structured output and never marks AI extraction as creator-confirmed.
 - User edits are promoted to `confirmed` with confidence 1.0.
-- Project workspace now starts on an Idea surface that accepts a rough thought, shows CreatorOS's interpretation, visibly labels inference, and lets the creator correct/confirm it.
-- Dedicated `CreativeDirection` domain model and collection store structured creative treatments instead of prose blobs.
-- Direction v2 generation uses the canonical Idea Understanding and explicitly asks for different creative mechanisms/treatments rather than alternative hooks.
-- Direction v2 UI shows premise, angle, audience promise, treatment, narrative shape, format fit, risks and unresolved questions.
-- Select and reject actions persist and emit activity events; refine/combine remain outstanding under 5.1.5.
-- Focused unit tests cover origin behavior, confidence clamping, list deduplication and M5 route registration. No CI runner is currently attached to the branch, so these tests are committed but not yet classified TESTED.
+- Project workspace starts on an Idea surface that accepts a rough thought, shows CreatorOS's interpretation, visibly labels inference, and lets the creator correct/confirm it.
+- Structured Creative Direction v2 generation uses canonical Idea Understanding and produces different treatments rather than alternative hooks.
+- Direction selection bridges into the existing M3 `CreativeObject(type=direction)` context so the proven outline/content pipeline still receives the selected treatment.
+- Direction refinement creates a new revision with lineage instead of overwriting the selected concept.
+- Direction combine creates a coherent derived direction with both parents recorded rather than mutating either source.
+- Readiness assessment checks core idea, audience promise, creator perspective, supporting example, evidence, ending/payoff and format feasibility without a fake numeric quality score.
+- Readiness stores blocking questions, research needs and planning notes against a concrete selected direction revision.
+- Direction UX now supports select, reject, refine, combine and readiness assessment.
+- Focused unit tests cover idea-understanding behavior, route registration, direction lineage and the non-numeric readiness model. No CI runner is currently attached to the branch, so newly committed tests are not yet classified TESTED.
+
+Runtime verification recorded from creator testing:
+- Idea Understanding generation/correction/confirmation worked in the local workflow.
+- Creative Direction v2 generation, rejection and selection worked in the local workflow.
+- Selected M5 direction successfully continued into the existing downstream workflow.
 
 Current gaps relevant to M5:
-- Legacy `ProjectBrief` still exists for compatibility; canonical idea meaning now lives in `IdeaUnderstanding`.
-- Refine/combine direction actions and readiness assessment are not yet implemented.
+- Newly added refine/combine and readiness flows still require local runtime verification.
 - Reel planning is currently a generic short outline (`hook`, 3–5 beats, ending), not a production specification.
 - Research currently summarizes only supplied context/sources; there is no evidence-task orchestration yet.
 - `CreativeObject.content` is plain text, so canonical structured planning state needs dedicated models rather than encoding critical state into prose.
