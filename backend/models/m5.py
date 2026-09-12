@@ -32,3 +32,48 @@ class DirectionReadiness(BaseModel):
     planning_notes: list[str] = Field(default_factory=list)
     created_at: str = Field(default_factory=_now)
     updated_at: str = Field(default_factory=_now)
+
+
+class PlanningRequirement(BaseModel):
+    key: str
+    label: str
+    description: str
+    required: bool = True
+    category: str
+
+
+class ReelPlanBeat(BaseModel):
+    start_second: int = Field(ge=0)
+    end_second: int = Field(gt=0)
+    purpose: str
+    spoken_audio: str
+    visual: str
+    shot_framing: str
+    on_screen_text: str = ""
+    transition: str = ""
+    assets: list[str] = Field(default_factory=list)
+    evidence_requirements: list[str] = Field(default_factory=list)
+
+
+class ReelCreativePlan(BaseModel):
+    id: str = Field(default_factory=_uid)
+    project_id: str
+    creator_id: str
+    direction_id: str
+    direction_revision: int = 1
+    version: int = 1
+    format: Literal["instagram_reel"] = "instagram_reel"
+    duration_seconds: int = Field(ge=10, le=180)
+    objective: str
+    audience_takeaway: str
+    hook_strategy: str
+    narrative_arc: str
+    tone: str
+    cta: str = ""
+    beats: list[ReelPlanBeat] = Field(min_length=2, max_length=20)
+    required_assets: list[str] = Field(default_factory=list)
+    research_requirements: list[str] = Field(default_factory=list)
+    unresolved_decisions: list[str] = Field(default_factory=list)
+    status: Literal["draft", "approved"] = "draft"
+    created_at: str = Field(default_factory=_now)
+    updated_at: str = Field(default_factory=_now)
