@@ -39,7 +39,8 @@ class SignalInput(BaseModel):
 
 
 def build_workflow_router(db):
-    router = APIRouter(prefix="/v1", tags=["workflow"])
+    # Mounted inside the existing /v1 M5 router so these paths stay /api/v1/...
+    router = APIRouter(tags=["workflow"])
 
     async def _user(sid: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE)):
         return await resolve_identity(db, sid)
