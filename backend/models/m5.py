@@ -1,7 +1,7 @@
 """M5-specific domain extensions kept isolated while the legacy project model remains stable."""
 from typing import Literal
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from models.domain import CreativeDirection, _uid, _now
 
