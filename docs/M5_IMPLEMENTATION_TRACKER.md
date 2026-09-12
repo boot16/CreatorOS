@@ -29,8 +29,8 @@ Chat is a control interface. Persistent project state is the source of truth. Ge
 | 5.1.4 | Creative Direction v2 | RUNTIME VERIFIED | 2–3 meaningfully different treatments, not rewritten hooks; direction records premise, angle, promise, treatment, risks and unresolved questions |
 | 5.1.5 | Direction actions | IMPLEMENTED | Select, reject, refine and combine without losing project state |
 | 5.1.6 | Readiness assessment | IMPLEMENTED | System identifies only material unresolved decisions before planning |
-| 5.1.7 | Format Requirements Engine | TODO | Deterministic schema defines required planning fields per medium; AI reasons/fills within that schema |
-| 5.1.8 | Reel Creative Plan v1 | TODO | Reel plan contains objective, takeaway, duration, beats, timing, script/audio, shot/framing, visual/B-roll, on-screen text, assets and evidence requirements |
+| 5.1.7 | Format Requirements Engine | IMPLEMENTED | Deterministic schema defines required planning fields per medium; AI reasons/fills within that schema |
+| 5.1.8 | Reel Creative Plan v1 | IN PROGRESS | Reel plan contains objective, takeaway, duration, beats, timing, script/audio, shot/framing, visual/B-roll, on-screen text, assets and evidence requirements |
 | 5.1.9 | Research/evidence orchestration | TODO | Research is triggered by plan gaps/claims; provenance and uncertainty are preserved; no fabricated citations |
 | 5.1.10 | Generation from plan | TODO | Content generation consumes approved creative specification instead of rediscovering decisions |
 | 5.1.11 | Plan-aware critique | TODO | Output is checked against intent, selected direction, plan, evidence, format and duration |
@@ -79,20 +79,14 @@ Preserve and extend:
 - `ProjectContext` owner-scoped context assembly
 
 Implemented M5.1 foundation:
-- Dedicated `IdeaUnderstanding` domain model with per-field origin and confidence.
-- Dedicated `idea_understandings` Mongo collection with one canonical document per project/creator.
-- Generate, retrieve and confirm/edit endpoints under `/api/v1/projects/{project_id}/idea-understanding`.
-- AI extraction service uses structured output and never marks AI extraction as creator-confirmed.
-- User edits are promoted to `confirmed` with confidence 1.0.
-- Project workspace starts on an Idea surface that accepts a rough thought, shows CreatorOS's interpretation, visibly labels inference, and lets the creator correct/confirm it.
-- Structured Creative Direction v2 generation uses canonical Idea Understanding and produces different treatments rather than alternative hooks.
-- Direction selection bridges into the existing M3 `CreativeObject(type=direction)` context so the proven outline/content pipeline still receives the selected treatment.
-- Direction refinement creates a new revision with lineage instead of overwriting the selected concept.
-- Direction combine creates a coherent derived direction with both parents recorded rather than mutating either source.
-- Readiness assessment checks core idea, audience promise, creator perspective, supporting example, evidence, ending/payoff and format feasibility without a fake numeric quality score.
-- Readiness stores blocking questions, research needs and planning notes against a concrete selected direction revision.
-- Direction UX now supports select, reject, refine, combine and readiness assessment.
-- Focused unit tests cover idea-understanding behavior, route registration, direction lineage and the non-numeric readiness model. No CI runner is currently attached to the branch, so newly committed tests are not yet classified TESTED.
+- Idea Understanding is structured, persistent, provenance-aware and runtime verified.
+- Creative Direction v2 is structured, persistent and runtime verified through selection into the existing downstream workflow.
+- Refine creates a new direction revision with parent lineage; combine creates a coherent derived direction with both parents recorded.
+- Readiness assessment checks core idea, audience promise, creator perspective, supporting example, evidence, ending/payoff and format feasibility without fake numeric quality scoring.
+- Deterministic format requirements now define what an Instagram Reel plan must contain; unsupported formats report honestly that deep planning is not implemented yet.
+- Reel plan backend persists immutable versions tied to a selected direction revision and includes duration, objective, takeaway, hook strategy, narrative arc, tone, CTA, timed beats, spoken/audio, visuals, shot/framing, on-screen text, transitions, assets, evidence needs, research requirements and unresolved decisions.
+- A `ProjectPlan` frontend surface has been implemented for the Reel plan, but workspace-tab integration is still pending; therefore 5.1.8 remains IN PROGRESS.
+- Focused tests cover idea-understanding behavior, direction lineage/readiness, deterministic requirements, structured Reel plan shape and route registration. No CI runner is attached to the branch, so newly committed tests are not yet classified TESTED.
 
 Runtime verification recorded from creator testing:
 - Idea Understanding generation/correction/confirmation worked in the local workflow.
@@ -101,9 +95,9 @@ Runtime verification recorded from creator testing:
 
 Current gaps relevant to M5:
 - Newly added refine/combine and readiness flows still require local runtime verification.
-- Reel planning is currently a generic short outline (`hook`, 3–5 beats, ending), not a production specification.
-- Research currently summarizes only supplied context/sources; there is no evidence-task orchestration yet.
-- `CreativeObject.content` is plain text, so canonical structured planning state needs dedicated models rather than encoding critical state into prose.
+- `ProjectPlan` still needs to be mounted into the main project workspace navigation.
+- Research is not yet an orchestrated evidence-task system tied to plan claims.
+- Existing content generation still consumes the legacy direction/outline context rather than the approved Creative Plan.
 - Current learned preferences are flat lists and lack confidence/evidence provenance.
 
 ## Implementation rule
