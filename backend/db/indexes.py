@@ -5,69 +5,41 @@ log = get_logger("db.indexes")
 
 
 async def ensure_indexes(db):
-    # Users
     await db.users.create_index("id", unique=True)
     await db.users.create_index("google_sub", unique=True, sparse=True)
     await db.users.create_index("email")
-
-    # Sessions
     await db.sessions.create_index("sid", unique=True)
     await db.sessions.create_index("user_id")
     await db.sessions.create_index("expires_at")
-
-    # Workspaces
     await db.workspaces.create_index("id", unique=True)
     await db.workspaces.create_index("owner_user_id")
     await db.workspaces.create_index("slug", unique=True)
-
-    # Workspace members
     await db.workspace_members.create_index([("workspace_id", 1), ("user_id", 1)], unique=True)
-
-    # Creators
     await db.creators.create_index("id", unique=True)
     await db.creators.create_index("user_id", unique=True)
     await db.creators.create_index("workspace_id")
-
-    # Connected platforms
     await db.connected_platforms.create_index("id", unique=True)
     await db.connected_platforms.create_index([("creator_id", 1), ("platform", 1)])
     await db.connected_platforms.create_index("external_channel_id", sparse=True)
-
-    # Platform credentials
     await db.platform_credentials.create_index("connected_platform_id", unique=True)
-
-    # YouTube snapshots
     await db.youtube_channel_snapshots.create_index([("creator_id", 1), ("captured_at", -1)])
     await db.creator_videos.create_index([("creator_id", 1), ("external_video_id", 1)], unique=True)
     await db.video_metric_snapshots.create_index([("creator_video_id", 1), ("captured_at", -1)])
-
-    # Intent + DNA
     await db.creator_intent.create_index("creator_id", unique=True)
     await db.creator_dna_snapshots.create_index([("creator_id", 1), ("computed_at", -1)])
-
-    # LLM cache v2
     await db.llm_cache_v2.create_index("key_hash", unique=True)
     await db.llm_cache_v2.create_index([("cache_kind", 1), ("entity_id", 1)])
     await db.llm_cache_v2.create_index("expires_at", sparse=True)
-
-    # Assistant sessions (M1: bind session_id to owner_key on first use)
     await db.assistant_sessions.create_index("session_id", unique=True)
     await db.assistant_sessions.create_index("owner_key")
     await db.assistant_history.create_index([("session_id", 1), ("created_at", 1)])
     await db.assistant_history.create_index("owner_key")
-
-    # Video content analysis (DNA-01 WIP — pre-created for future wiring)
     await db.video_content_analysis.create_index(
-        [("creator_video_id", 1), ("source_content_hash", 1),
-         ("prompt_version", 1), ("pipeline_version", 1), ("model", 1)],
+        [("creator_video_id", 1), ("source_content_hash", 1), ("prompt_version", 1), ("pipeline_version", 1), ("model", 1)],
         unique=True,
     )
     await db.video_content_analysis.create_index("creator_id")
-
-    # OAuth states (short-lived) — TTL 10 minutes
     await db.oauth_states.create_index("created_at_ts", expireAfterSeconds=600)
-
-    # M2: Projects, CreativeObjects, ActivityEvents
     await db.projects.create_index("id", unique=True)
     await db.projects.create_index([("creator_id", 1), ("updated_at", -1)])
     await db.projects.create_index([("creator_id", 1), ("status", 1)])
@@ -75,41 +47,35 @@ async def ensure_indexes(db):
     await db.creative_objects.create_index([("project_id", 1), ("created_at", 1)])
     await db.activity_events.create_index("id", unique=True)
     await db.activity_events.create_index([("project_id", 1), ("created_at", -1)])
-
-    # M3: Sources + project chat
     await db.project_sources.create_index("id", unique=True)
     await db.project_sources.create_index([("project_id", 1), ("created_at", 1)])
     await db.project_chats.create_index([("project_id", 1), ("created_at", 1)])
-
-    # M4: one compact profile per creator and efficient incremental event reads.
     await db.activity_events.create_index([("creator_id", 1), ("created_at", 1)])
     await db.creator_learned_prefs.create_index("creator_id", unique=True)
 
-    # M5.1: canonical idea understanding and structured creative directions.
+    # M5.1 idea understanding.
     await db.idea_understandings.create_index("id", unique=True)
-    await db.idea_understandings.create_index(
-        [("project_id", 1), ("creator_id", 1)], unique=True
-    )
+    await db.idea_understandings.create_index([("project_id", 1), ("creator_id", 1)], unique=True)
     await db.idea_understandings.create_index([("creator_id", 1), ("updated_at", -1)])
 
+    # M5.1 creative direction development.
     await db.creative_directions.create_index("id", unique=True)
-    await db.creative_directions.create_index(
-        [("project_id", 1), ("creator_id", 1), ("created_at", 1)]
-    )
+    await db.creative_directions.create_index([("project_id", 1), ("creator_id", 1), ("created_at", 1)])
     await db.creative_directions.create_index([("project_id", 1), ("batch_id", 1)])
     await db.creative_directions.create_index([("project_id", 1), ("status", 1)])
-
-    # M5.1 readiness is versioned against a concrete direction revision.
     await db.direction_readiness.create_index("id", unique=True)
     await db.direction_readiness.create_index(
-        [
-            ("project_id", 1),
-            ("creator_id", 1),
-            ("direction_id", 1),
-            ("direction_revision", 1),
-        ],
+        [("project_id", 1), ("creator_id", 1), ("direction_id", 1), ("direction_revision", 1)],
         unique=True,
     )
     await db.direction_readiness.create_index([("project_id", 1), ("updated_at", -1)])
+
+    # M5.1 medium-aware creative plans. Multiple immutable versions may exist per direction revision.
+    await db.creative_plans.create_index("id", unique=True)
+    await db.creative_plans.create_index(
+        [("project_id", 1), ("creator_id", 1), ("direction_id", 1), ("direction_revision", 1), ("version", -1)],
+        unique=True,
+    )
+    await db.creative_plans.create_index([("project_id", 1), ("updated_at", -1)])
 
     log.info("indexes_ensured")
