@@ -53,28 +53,37 @@ async def ensure_indexes(db):
     await db.activity_events.create_index([("creator_id", 1), ("created_at", 1)])
     await db.creator_learned_prefs.create_index("creator_id", unique=True)
 
-    # M5.1 idea understanding.
+    # M5 living project foundation: one canonical context object per creator-owned project.
+    await db.project_foundations.create_index("id", unique=True)
+    await db.project_foundations.create_index([("project_id", 1), ("creator_id", 1)], unique=True)
+    await db.project_foundations.create_index([("creator_id", 1), ("updated_at", -1)])
+
+    # M5 learning foundation. Raw signals remain immutable evidence; preferences are derived state.
+    await db.learning_signals.create_index("id", unique=True)
+    await db.learning_signals.create_index([("creator_id", 1), ("created_at", -1)])
+    await db.learning_signals.create_index([("project_id", 1), ("created_at", -1)], sparse=True)
+    await db.learning_signals.create_index([("creator_id", 1), ("signal_type", 1)])
+    await db.creator_preference_evidence.create_index("id", unique=True)
+    await db.creator_preference_evidence.create_index([("creator_id", 1), ("key", 1), ("scope", 1)], unique=True)
+    await db.creator_preference_evidence.create_index([("creator_id", 1), ("confidence", -1)])
+
+    # M5.1 idea understanding (legacy compatibility while Foundation replaces the separate Idea/Brief UX).
     await db.idea_understandings.create_index("id", unique=True)
     await db.idea_understandings.create_index([("project_id", 1), ("creator_id", 1)], unique=True)
     await db.idea_understandings.create_index([("creator_id", 1), ("updated_at", -1)])
 
-    # M5.1 creative direction development.
     await db.creative_directions.create_index("id", unique=True)
     await db.creative_directions.create_index([("project_id", 1), ("creator_id", 1), ("created_at", 1)])
     await db.creative_directions.create_index([("project_id", 1), ("batch_id", 1)])
     await db.creative_directions.create_index([("project_id", 1), ("status", 1)])
     await db.direction_readiness.create_index("id", unique=True)
     await db.direction_readiness.create_index(
-        [("project_id", 1), ("creator_id", 1), ("direction_id", 1), ("direction_revision", 1)],
-        unique=True,
+        [("project_id", 1), ("creator_id", 1), ("direction_id", 1), ("direction_revision", 1)], unique=True,
     )
     await db.direction_readiness.create_index([("project_id", 1), ("updated_at", -1)])
-
-    # M5.1 medium-aware creative plans. Multiple immutable versions may exist per direction revision.
     await db.creative_plans.create_index("id", unique=True)
     await db.creative_plans.create_index(
-        [("project_id", 1), ("creator_id", 1), ("direction_id", 1), ("direction_revision", 1), ("version", -1)],
-        unique=True,
+        [("project_id", 1), ("creator_id", 1), ("direction_id", 1), ("direction_revision", 1), ("version", -1)], unique=True,
     )
     await db.creative_plans.create_index([("project_id", 1), ("updated_at", -1)])
 
