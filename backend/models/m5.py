@@ -1,9 +1,64 @@
 """M5-specific domain extensions kept isolated while the legacy project model remains stable."""
-from typing import Literal
+from typing import Literal, Optional, Any
 
 from pydantic import BaseModel, Field
 
 from models.domain import CreativeDirection, _uid, _now
+
+
+class FoundationField(BaseModel):
+    value: Optional[str] = None
+    origin: Literal["creator_provided", "inferred", "confirmed", "learned"] = "inferred"
+    confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+
+
+class ProjectFoundation(BaseModel):
+    """Living project context shared by ideation, research and content execution."""
+    id: str = Field(default_factory=_uid)
+    project_id: str
+    creator_id: str
+    vision: FoundationField = Field(default_factory=FoundationField)
+    context: FoundationField = Field(default_factory=FoundationField)
+    goal: FoundationField = Field(default_factory=FoundationField)
+    audience: FoundationField = Field(default_factory=FoundationField)
+    creator_perspective: FoundationField = Field(default_factory=FoundationField)
+    platform_format: FoundationField = Field(default_factory=FoundationField)
+    constraints: list[str] = Field(default_factory=list)
+    known_facts: list[str] = Field(default_factory=list)
+    material_unknowns: list[str] = Field(default_factory=list)
+    decisions: list[str] = Field(default_factory=list)
+    version: int = 1
+    created_at: str = Field(default_factory=_now)
+    updated_at: str = Field(default_factory=_now)
+
+
+class LearningSignal(BaseModel):
+    """Evidence captured from creator behavior; raw evidence is preserved before inference."""
+    id: str = Field(default_factory=_uid)
+    creator_id: str
+    project_id: Optional[str] = None
+    signal_type: str
+    target_type: Optional[str] = None
+    target_id: Optional[str] = None
+    strength: Literal["weak", "medium", "strong", "very_strong"] = "medium"
+    payload: dict[str, Any] = Field(default_factory=dict)
+    created_at: str = Field(default_factory=_now)
+
+
+class CreatorPreferenceEvidence(BaseModel):
+    id: str = Field(default_factory=_uid)
+    creator_id: str
+    key: str
+    scope: str = "global"
+    hypothesis: str
+    confidence: float = Field(default=0.25, ge=0.0, le=1.0)
+    evidence_count: int = 0
+    counter_evidence_count: int = 0
+    supporting_signal_ids: list[str] = Field(default_factory=list)
+    last_seen_at: Optional[str] = None
+    status: Literal["hypothesis", "active", "weakened"] = "hypothesis"
+    created_at: str = Field(default_factory=_now)
+    updated_at: str = Field(default_factory=_now)
 
 
 class CreativeDirectionV2(CreativeDirection):
