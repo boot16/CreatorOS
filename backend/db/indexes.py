@@ -99,4 +99,17 @@ async def ensure_indexes(db):
     await db.creative_directions.create_index([("project_id", 1), ("batch_id", 1)])
     await db.creative_directions.create_index([("project_id", 1), ("status", 1)])
 
+    # M5.1 readiness is versioned against a concrete direction revision.
+    await db.direction_readiness.create_index("id", unique=True)
+    await db.direction_readiness.create_index(
+        [
+            ("project_id", 1),
+            ("creator_id", 1),
+            ("direction_id", 1),
+            ("direction_revision", 1),
+        ],
+        unique=True,
+    )
+    await db.direction_readiness.create_index([("project_id", 1), ("updated_at", -1)])
+
     log.info("indexes_ensured")
