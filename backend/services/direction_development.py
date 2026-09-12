@@ -9,7 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from models.domain import CreativeDirection, DirectionReadiness, DirectionReadinessCriterion
+from models.m5 import CreativeDirectionV2, DirectionReadiness, DirectionReadinessCriterion
 from services.llm import call_structured
 
 
@@ -78,7 +78,7 @@ def _clean(items: list[str], limit: int) -> list[str]:
     return out
 
 
-def _direction_context(direction: CreativeDirection) -> str:
+def _direction_context(direction: CreativeDirectionV2) -> str:
     return f"""DIRECTION
 Title: {direction.title}
 Premise: {direction.premise}
@@ -93,8 +93,8 @@ Risks: {direction.risks}
 Unresolved questions: {direction.unresolved_questions}"""
 
 
-def _build_direction(project, source: CreativeDirection, output: DirectionDraftOutput, *, parents: list[str]) -> CreativeDirection:
-    return CreativeDirection(
+def _build_direction(project, source: CreativeDirectionV2, output: DirectionDraftOutput, *, parents: list[str]) -> CreativeDirectionV2:
+    return CreativeDirectionV2(
         project_id=project.id,
         creator_id=project.creator_id,
         batch_id=str(uuid.uuid4()),
@@ -115,7 +115,7 @@ def _build_direction(project, source: CreativeDirection, output: DirectionDraftO
     )
 
 
-async def refine_direction(project, direction: CreativeDirection, instruction: str) -> CreativeDirection:
+async def refine_direction(project, direction: CreativeDirectionV2, instruction: str) -> CreativeDirectionV2:
     content_type = project.content_type.value if hasattr(project.content_type, "value") else project.content_type
     prompt = f"""PROJECT
 Title: {project.title}
@@ -141,7 +141,7 @@ Do not turn this into a script. Keep it at creative-direction level."""
     return _build_direction(project, direction, result, parents=[direction.id])
 
 
-async def combine_directions(project, primary: CreativeDirection, secondary: CreativeDirection, instruction: str = "") -> CreativeDirection:
+async def combine_directions(project, primary: CreativeDirectionV2, secondary: CreativeDirectionV2, instruction: str = "") -> CreativeDirectionV2:
     content_type = project.content_type.value if hasattr(project.content_type, "value") else project.content_type
     prompt = f"""PROJECT
 Title: {project.title}
@@ -172,7 +172,7 @@ risks, unresolved_questions."""
     return combined
 
 
-async def assess_direction_readiness(project, direction: CreativeDirection) -> DirectionReadiness:
+async def assess_direction_readiness(project, direction: CreativeDirectionV2) -> DirectionReadiness:
     brief = project.brief.model_dump() if hasattr(project.brief, "model_dump") else dict(project.brief or {})
     content_type = project.content_type.value if hasattr(project.content_type, "value") else project.content_type
     prompt = f"""PROJECT
