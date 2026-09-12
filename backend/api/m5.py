@@ -15,9 +15,11 @@ from models.domain import IdeaUnderstanding, CreativeObject
 from repositories import ProjectRepo, ActivityEventRepo, CreativeObjectRepo
 from repositories.idea_understanding import IdeaUnderstandingRepo
 from repositories.creative_directions import CreativeDirectionRepo, DirectionReadinessRepo
+from repositories.creative_plans import CreativePlanRepo
 from services.idea_understanding import understand_idea
 from services.creative_directions import generate_creative_directions
 from services.direction_development import refine_direction, combine_directions, assess_direction_readiness
+from services.planning import requirements_for, generate_reel_plan
 
 
 _SCALAR_FIELDS = {
@@ -262,9 +264,7 @@ def build_m5_router(db):
         selected = await CreativeDirectionRepo(db).get_selected(project.id, project.creator_id)
         if not selected:
             raise AppError(Codes.INVALID_INPUT, "Select a creative direction first", status_code=409)
-        item = await DirectionReadinessRepo(db).get_current(
-            project.id, project.creator_id, selected.id, selected.revision
-        )
+        item = await DirectionReadinessRepo(db).get_current(project.id, project.creator_id, selected.id, selected.revision)
         if not item:
             raise AppError(Codes.NOT_FOUND, "Readiness has not been assessed yet", status_code=404)
         return item.model_dump()
@@ -283,6 +283,69 @@ def build_m5_router(db):
             "revision": selected.revision,
             "status": item.overall_status,
             "research_need_count": len(item.research_needs),
+        })
+        return item.model_dump()
+
+    # ----- M5.1 deterministic requirements + medium-aware plan -----
+    @router.get("/projects/{project_id}/planning-requirements")
+    async def get_planning_requirements(project_id: str, user: CurrentUser = Depends(_user_dep)):
+        project = await _owned_project(project_id, user)
+        content_type = project.content_type.value if hasattr(project.content_type, "value") else project.content_type
+        requirements = requirements_for(content_type)
+        if not requirements:
+            return {
+                "content_type": content_type,
+                "supported": False,
+                "requirements": [],
+                "message": "Deep planning is not implemented for this format yet.",
+            }
+        return {
+            "content_type": content_type,
+            "supported": True,
+            "requirements": [r.model_dump() for r in requirements],
+        }
+
+    @router.get("/projects/{project_id}/creative-plan")
+    async def get_creative_plan(project_id: str, user: CurrentUser = Depends(_user_dep)):
+        project = await _owned_project(project_id, user)
+        selected = await CreativeDirectionRepo(db).get_selected(project.id, project.creator_id)
+        if not selected:
+            raise AppError(Codes.INVALID_INPUT, "Select a creative direction first", status_code=409)
+        item = await CreativePlanRepo(db).latest_for_direction(project.id, project.creator_id, selected.id, selected.revision)
+        if not item:
+            raise AppError(Codes.NOT_FOUND, "Creative plan has not been generated yet", status_code=404)
+        return item.model_dump()
+
+    @router.post("/projects/{project_id}/creative-plan/generate")
+    async def generate_creative_plan(project_id: str, user: CurrentUser = Depends(_user_dep)):
+        project = await _owned_project(project_id, user)
+        content_type = project.content_type.value if hasattr(project.content_type, "value") else project.content_type
+        if content_type != "instagram_reel":
+            raise AppError(Codes.INVALID_INPUT, "Deep creative planning currently supports Instagram Reels first", status_code=409)
+        selected = await CreativeDirectionRepo(db).get_selected(project.id, project.creator_id)
+        if not selected:
+            raise AppError(Codes.INVALID_INPUT, "Select a creative direction first", status_code=409)
+        readiness = await DirectionReadinessRepo(db).get_current(project.id, project.creator_id, selected.id, selected.revision)
+        get_rate_limiter().check(f"creative-plan-{project.creator_id}", *BUDGETS["project_ai_generate"])
+        item = await generate_reel_plan(project, selected, readiness)
+        await CreativePlanRepo(db).create_next(item)
+        await ActivityEventRepo(db).add(project.id, project.creator_id, "creative_plan_generated", {
+            "plan_id": item.id,
+            "version": item.version,
+            "direction_id": selected.id,
+            "direction_revision": selected.revision,
+            "research_requirement_count": len(item.research_requirements),
+        })
+        return item.model_dump()
+
+    @router.put("/projects/{project_id}/creative-plan/{plan_id}/approve")
+    async def approve_creative_plan(project_id: str, plan_id: str, user: CurrentUser = Depends(_user_dep)):
+        project = await _owned_project(project_id, user)
+        item = await CreativePlanRepo(db).update_status(plan_id, project.id, project.creator_id, "approved")
+        if not item:
+            raise AppError(Codes.NOT_FOUND, "Creative plan not found", status_code=404)
+        await ActivityEventRepo(db).add(project.id, project.creator_id, "creative_plan_approved", {
+            "plan_id": item.id, "version": item.version,
         })
         return item.model_dump()
 
