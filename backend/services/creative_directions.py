@@ -2,7 +2,8 @@
 import uuid
 from pydantic import BaseModel, Field
 
-from models.domain import CreativeDirection, IdeaUnderstanding
+from models.domain import IdeaUnderstanding
+from models.m5 import CreativeDirectionV2
 from services.llm import call_structured
 
 
@@ -52,7 +53,7 @@ def _clean(items: list[str], limit: int = 5) -> list[str]:
     return out
 
 
-async def generate_creative_directions(project, understanding: IdeaUnderstanding) -> list[CreativeDirection]:
+async def generate_creative_directions(project, understanding: IdeaUnderstanding) -> list[CreativeDirectionV2]:
     content_type = project.content_type.value if hasattr(project.content_type, "value") else project.content_type
     prompt = f"""PROJECT
 Title: {project.title}
@@ -87,7 +88,7 @@ visual thought experiment, story, comparison) without forcing one of those examp
     )
     batch_id = str(uuid.uuid4())
     return [
-        CreativeDirection(
+        CreativeDirectionV2(
             project_id=project.id,
             creator_id=project.creator_id,
             batch_id=batch_id,
