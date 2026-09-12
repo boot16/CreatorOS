@@ -14,18 +14,15 @@ from core.rate_limit import get_rate_limiter, BUDGETS
 from models.domain import IdeaUnderstanding, CreativeObject
 from repositories import ProjectRepo, ActivityEventRepo, CreativeObjectRepo
 from repositories.idea_understanding import IdeaUnderstandingRepo
-from repositories.creative_directions import CreativeDirectionRepo
+from repositories.creative_directions import CreativeDirectionRepo, DirectionReadinessRepo
 from services.idea_understanding import understand_idea
 from services.creative_directions import generate_creative_directions
+from services.direction_development import refine_direction, combine_directions, assess_direction_readiness
 
 
 _SCALAR_FIELDS = {
-    "subject",
-    "creator_perspective",
-    "core_claim",
-    "intent",
-    "target_audience",
-    "desired_effect",
+    "subject", "creator_perspective", "core_claim", "intent",
+    "target_audience", "desired_effect",
 }
 
 
@@ -62,6 +59,15 @@ class IdeaUnderstandingResponse(BaseModel):
     version: int
     created_at: str
     updated_at: str
+
+
+class DirectionRefineRequest(BaseModel):
+    instruction: str = Field(min_length=3, max_length=3000)
+
+
+class DirectionCombineRequest(BaseModel):
+    secondary_direction_id: str = Field(min_length=1, max_length=200)
+    instruction: str = Field(default="", max_length=3000)
 
 
 def _response(item: IdeaUnderstanding) -> IdeaUnderstandingResponse:
@@ -109,12 +115,6 @@ def build_m5_router(db):
         return project
 
     async def _sync_direction_artifact(project, item):
-        """Bridge M5 structured direction into existing M3 generation context.
-
-        Until downstream generation consumes CreativeDirection directly, ProjectContext still
-        reads the singleton CreativeObject(type=direction). Keeping this adapter prevents the
-        new workflow from breaking the already-working outline/content pipeline.
-        """
         repo = CreativeObjectRepo(db)
         objects = await repo.list_for_project(project.id)
         existing = next(
@@ -132,10 +132,7 @@ def build_m5_router(db):
                 content=content,
             ))
 
-    @router.get(
-        "/projects/{project_id}/idea-understanding",
-        response_model=IdeaUnderstandingResponse,
-    )
+    @router.get("/projects/{project_id}/idea-understanding", response_model=IdeaUnderstandingResponse)
     async def get_idea_understanding(project_id: str, user: CurrentUser = Depends(_user_dep)):
         project = await _owned_project(project_id, user)
         item = await IdeaUnderstandingRepo(db).get(project.id, project.creator_id)
@@ -143,42 +140,20 @@ def build_m5_router(db):
             raise AppError(Codes.NOT_FOUND, "Idea understanding not created yet", status_code=404)
         return _response(item)
 
-    @router.post(
-        "/projects/{project_id}/idea-understanding/generate",
-        response_model=IdeaUnderstandingResponse,
-    )
-    async def generate_idea_understanding(
-        project_id: str,
-        body: IdeaUnderstandRequest,
-        user: CurrentUser = Depends(_user_dep),
-    ):
+    @router.post("/projects/{project_id}/idea-understanding/generate", response_model=IdeaUnderstandingResponse)
+    async def generate_idea_understanding(project_id: str, body: IdeaUnderstandRequest, user: CurrentUser = Depends(_user_dep)):
         project = await _owned_project(project_id, user)
-        get_rate_limiter().check(
-            f"idea-understanding-{project.creator_id}",
-            *BUDGETS["project_ai_generate"],
-        )
+        get_rate_limiter().check(f"idea-understanding-{project.creator_id}", *BUDGETS["project_ai_generate"])
         item = await understand_idea(project, body.raw_idea)
         item = await IdeaUnderstandingRepo(db).upsert(item)
-        await ActivityEventRepo(db).add(
-            project.id,
-            project.creator_id,
-            "idea_understanding_generated",
-            {
-                "version": item.version,
-                "material_unknown_count": len(item.material_unknowns),
-            },
-        )
+        await ActivityEventRepo(db).add(project.id, project.creator_id, "idea_understanding_generated", {
+            "version": item.version,
+            "material_unknown_count": len(item.material_unknowns),
+        })
         return _response(item)
 
-    @router.patch(
-        "/projects/{project_id}/idea-understanding",
-        response_model=IdeaUnderstandingResponse,
-    )
-    async def confirm_idea_understanding(
-        project_id: str,
-        body: IdeaUnderstandingPatch,
-        user: CurrentUser = Depends(_user_dep),
-    ):
+    @router.patch("/projects/{project_id}/idea-understanding", response_model=IdeaUnderstandingResponse)
+    async def confirm_idea_understanding(project_id: str, body: IdeaUnderstandingPatch, user: CurrentUser = Depends(_user_dep)):
         project = await _owned_project(project_id, user)
         patch = body.model_dump(exclude_none=True)
         scalar_patch = {k: v for k, v in patch.items() if k in _SCALAR_FIELDS}
@@ -192,15 +167,12 @@ def build_m5_router(db):
         )
         if not item:
             raise AppError(Codes.NOT_FOUND, "Idea understanding not created yet", status_code=404)
-        await ActivityEventRepo(db).add(
-            project.id,
-            project.creator_id,
-            "idea_understanding_confirmed",
-            {"version": item.version, "fields": sorted(patch.keys())},
-        )
+        await ActivityEventRepo(db).add(project.id, project.creator_id, "idea_understanding_confirmed", {
+            "version": item.version,
+            "fields": sorted(patch.keys()),
+        })
         return _response(item)
 
-    # ----- M5.1 Creative Directions v2 -----
     @router.get("/projects/{project_id}/creative-directions")
     async def list_creative_directions(project_id: str, user: CurrentUser = Depends(_user_dep)):
         project = await _owned_project(project_id, user)
@@ -212,74 +184,106 @@ def build_m5_router(db):
         project = await _owned_project(project_id, user)
         understanding = await IdeaUnderstandingRepo(db).get(project.id, project.creator_id)
         if not understanding:
-            raise AppError(
-                Codes.INVALID_INPUT,
-                "Understand the idea before generating creative directions",
-                status_code=409,
-            )
-        get_rate_limiter().check(
-            f"creative-directions-v2-{project.creator_id}",
-            *BUDGETS["project_ai_generate"],
-        )
+            raise AppError(Codes.INVALID_INPUT, "Understand the idea before generating creative directions", status_code=409)
+        get_rate_limiter().check(f"creative-directions-v2-{project.creator_id}", *BUDGETS["project_ai_generate"])
         items = await generate_creative_directions(project, understanding)
         await CreativeDirectionRepo(db).insert_many(items)
-        await ActivityEventRepo(db).add(
-            project.id,
-            project.creator_id,
-            "creative_directions_generated",
-            {
-                "batch_id": items[0].batch_id if items else None,
-                "count": len(items),
-                "understanding_version": understanding.version,
-            },
-        )
+        await ActivityEventRepo(db).add(project.id, project.creator_id, "creative_directions_generated", {
+            "batch_id": items[0].batch_id if items else None,
+            "count": len(items),
+            "understanding_version": understanding.version,
+        })
         return {"directions": [item.model_dump() for item in items]}
 
     @router.put("/projects/{project_id}/creative-directions/{direction_id}/select")
-    async def select_creative_direction(
-        project_id: str,
-        direction_id: str,
-        user: CurrentUser = Depends(_user_dep),
-    ):
+    async def select_creative_direction(project_id: str, direction_id: str, user: CurrentUser = Depends(_user_dep)):
         project = await _owned_project(project_id, user)
-        item = await CreativeDirectionRepo(db).mark_selected(
-            direction_id, project.id, project.creator_id
-        )
+        item = await CreativeDirectionRepo(db).mark_selected(direction_id, project.id, project.creator_id)
         if not item:
             raise AppError(Codes.NOT_FOUND, "Creative direction not found", status_code=404)
-
-        # Keep the existing, proven M3 outline/content context path working during M5 migration.
         await _sync_direction_artifact(project, item)
         current_status = project.status.value if hasattr(project.status, "value") else project.status
         if current_status in {"idea", "researching"}:
             await ProjectRepo(db).update(project.id, project.creator_id, {"status": "developing"})
-
-        await ActivityEventRepo(db).add(
-            project.id,
-            project.creator_id,
-            "creative_direction_selected",
-            {"direction_id": item.id, "title": item.title[:160]},
-        )
+        await ActivityEventRepo(db).add(project.id, project.creator_id, "creative_direction_selected", {
+            "direction_id": item.id, "title": item.title[:160], "revision": item.revision,
+        })
         return item.model_dump()
 
     @router.put("/projects/{project_id}/creative-directions/{direction_id}/reject")
-    async def reject_creative_direction(
-        project_id: str,
-        direction_id: str,
-        user: CurrentUser = Depends(_user_dep),
-    ):
+    async def reject_creative_direction(project_id: str, direction_id: str, user: CurrentUser = Depends(_user_dep)):
         project = await _owned_project(project_id, user)
-        item = await CreativeDirectionRepo(db).mark_rejected(
-            direction_id, project.id, project.creator_id
-        )
+        item = await CreativeDirectionRepo(db).mark_rejected(direction_id, project.id, project.creator_id)
         if not item:
             raise AppError(Codes.NOT_FOUND, "Creative direction not found", status_code=404)
-        await ActivityEventRepo(db).add(
-            project.id,
-            project.creator_id,
-            "creative_direction_rejected",
-            {"direction_id": item.id, "title": item.title[:160]},
+        await ActivityEventRepo(db).add(project.id, project.creator_id, "creative_direction_rejected", {
+            "direction_id": item.id, "title": item.title[:160],
+        })
+        return item.model_dump()
+
+    @router.post("/projects/{project_id}/creative-directions/{direction_id}/refine")
+    async def refine_creative_direction(project_id: str, direction_id: str, body: DirectionRefineRequest, user: CurrentUser = Depends(_user_dep)):
+        project = await _owned_project(project_id, user)
+        source = await CreativeDirectionRepo(db).get(direction_id, project.id, project.creator_id)
+        if not source:
+            raise AppError(Codes.NOT_FOUND, "Creative direction not found", status_code=404)
+        get_rate_limiter().check(f"creative-direction-refine-{project.creator_id}", *BUDGETS["project_ai_generate"])
+        item = await refine_direction(project, source, body.instruction)
+        await CreativeDirectionRepo(db).insert(item)
+        await ActivityEventRepo(db).add(project.id, project.creator_id, "creative_direction_refined", {
+            "source_direction_id": source.id,
+            "direction_id": item.id,
+            "revision": item.revision,
+        })
+        return item.model_dump()
+
+    @router.post("/projects/{project_id}/creative-directions/{direction_id}/combine")
+    async def combine_creative_direction(project_id: str, direction_id: str, body: DirectionCombineRequest, user: CurrentUser = Depends(_user_dep)):
+        project = await _owned_project(project_id, user)
+        primary = await CreativeDirectionRepo(db).get(direction_id, project.id, project.creator_id)
+        secondary = await CreativeDirectionRepo(db).get(body.secondary_direction_id, project.id, project.creator_id)
+        if not primary or not secondary:
+            raise AppError(Codes.NOT_FOUND, "Creative direction not found", status_code=404)
+        if primary.id == secondary.id:
+            raise AppError(Codes.INVALID_INPUT, "Choose two different directions to combine", status_code=400)
+        get_rate_limiter().check(f"creative-direction-combine-{project.creator_id}", *BUDGETS["project_ai_generate"])
+        item = await combine_directions(project, primary, secondary, body.instruction)
+        await CreativeDirectionRepo(db).insert(item)
+        await ActivityEventRepo(db).add(project.id, project.creator_id, "creative_directions_combined", {
+            "parent_direction_ids": item.parent_direction_ids,
+            "direction_id": item.id,
+            "revision": item.revision,
+        })
+        return item.model_dump()
+
+    @router.get("/projects/{project_id}/direction-readiness")
+    async def get_direction_readiness(project_id: str, user: CurrentUser = Depends(_user_dep)):
+        project = await _owned_project(project_id, user)
+        selected = await CreativeDirectionRepo(db).get_selected(project.id, project.creator_id)
+        if not selected:
+            raise AppError(Codes.INVALID_INPUT, "Select a creative direction first", status_code=409)
+        item = await DirectionReadinessRepo(db).get_current(
+            project.id, project.creator_id, selected.id, selected.revision
         )
+        if not item:
+            raise AppError(Codes.NOT_FOUND, "Readiness has not been assessed yet", status_code=404)
+        return item.model_dump()
+
+    @router.post("/projects/{project_id}/direction-readiness/assess")
+    async def assess_selected_direction(project_id: str, user: CurrentUser = Depends(_user_dep)):
+        project = await _owned_project(project_id, user)
+        selected = await CreativeDirectionRepo(db).get_selected(project.id, project.creator_id)
+        if not selected:
+            raise AppError(Codes.INVALID_INPUT, "Select a creative direction first", status_code=409)
+        get_rate_limiter().check(f"direction-readiness-{project.creator_id}", *BUDGETS["project_ai_generate"])
+        item = await assess_direction_readiness(project, selected)
+        await DirectionReadinessRepo(db).upsert(item)
+        await ActivityEventRepo(db).add(project.id, project.creator_id, "direction_readiness_assessed", {
+            "direction_id": selected.id,
+            "revision": selected.revision,
+            "status": item.overall_status,
+            "research_need_count": len(item.research_needs),
+        })
         return item.model_dump()
 
     return router
